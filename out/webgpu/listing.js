@@ -1679,6 +1679,15 @@ export const listing = [
       "execution",
       "expression",
       "binary",
+      "af_comparison"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "execution",
+      "expression",
+      "binary",
       "bitwise"
     ]
   },
@@ -3999,6 +4008,13 @@ export const listing = [
   {
     "file": [
       "web_platform",
+      "copyToTexture",
+      "ImageData"
+    ]
+  },
+  {
+    "file": [
+      "web_platform",
       "copyToTexture"
     ],
     "readme": "Tests for copyToTexture from all possible sources (video, canvas, ImageBitmap, ...)"
@@ -4008,6 +4024,13 @@ export const listing = [
       "web_platform",
       "copyToTexture",
       "canvas"
+    ]
+  },
+  {
+    "file": [
+      "web_platform",
+      "copyToTexture",
+      "image"
     ]
   },
   {
