@@ -6,15 +6,7 @@ import {
 } from '../../external/petamoriken/float16/float16.js';
 
 import { kBit, kValue } from './constants.js';
-import {
-  f32,
-  f16,
-  floatBitsToNumber,
-  i32,
-  kFloat16Format,
-  kFloat32Format,
-  u32,
-} from './conversion.js';
+import { floatBitsToNumber, i32, kFloat16Format, kFloat32Format, u32 } from './conversion.js';
 
 /**
  * A multiple of 8 guaranteed to be way too large to allocate (just under 8 pebibytes).
@@ -122,11 +114,11 @@ export function nextAfterF64(val: number, dir: NextDirection, mode: FlushMode): 
   }
 
   if (val === Number.POSITIVE_INFINITY) {
-    return kValue.f64.infinity.positive;
+    return kValue.f64.positive.infinity;
   }
 
   if (val === Number.NEGATIVE_INFINITY) {
-    return kValue.f64.infinity.negative;
+    return kValue.f64.negative.infinity;
   }
 
   assert(
@@ -139,9 +131,9 @@ export function nextAfterF64(val: number, dir: NextDirection, mode: FlushMode): 
   // -/+0 === 0 returns true
   if (val === 0) {
     if (dir === 'positive') {
-      return mode === 'flush' ? kValue.f64.positive.min : kValue.f64.subnormal.positive.min;
+      return mode === 'flush' ? kValue.f64.positive.min : kValue.f64.positive.subnormal.min;
     } else {
-      return mode === 'flush' ? kValue.f64.negative.max : kValue.f64.subnormal.negative.max;
+      return mode === 'flush' ? kValue.f64.negative.max : kValue.f64.negative.subnormal.max;
     }
   }
 
@@ -156,9 +148,9 @@ export function nextAfterF64(val: number, dir: NextDirection, mode: FlushMode): 
   // Checking for overflow
   if ((nextAfterF64Int[0] & 0x7ff0_0000_0000_0000n) === 0x7ff0_0000_0000_0000n) {
     if (dir === 'positive') {
-      return kValue.f64.infinity.positive;
+      return kValue.f64.positive.infinity;
     } else {
-      return kValue.f64.infinity.negative;
+      return kValue.f64.negative.infinity;
     }
   }
 
@@ -195,11 +187,11 @@ export function nextAfterF32(val: number, dir: NextDirection, mode: FlushMode): 
   }
 
   if (val === Number.POSITIVE_INFINITY) {
-    return kValue.f32.infinity.positive;
+    return kValue.f32.positive.infinity;
   }
 
   if (val === Number.NEGATIVE_INFINITY) {
-    return kValue.f32.infinity.negative;
+    return kValue.f32.negative.infinity;
   }
 
   assert(
@@ -212,9 +204,9 @@ export function nextAfterF32(val: number, dir: NextDirection, mode: FlushMode): 
   // -/+0 === 0 returns true
   if (val === 0) {
     if (dir === 'positive') {
-      return mode === 'flush' ? kValue.f32.positive.min : kValue.f32.subnormal.positive.min;
+      return mode === 'flush' ? kValue.f32.positive.min : kValue.f32.positive.subnormal.min;
     } else {
-      return mode === 'flush' ? kValue.f32.negative.max : kValue.f32.subnormal.negative.max;
+      return mode === 'flush' ? kValue.f32.negative.max : kValue.f32.negative.subnormal.max;
     }
   }
 
@@ -237,9 +229,9 @@ export function nextAfterF32(val: number, dir: NextDirection, mode: FlushMode): 
   // Checking for overflow
   if ((nextAfterF32Int[0] & 0x7f800000) === 0x7f800000) {
     if (dir === 'positive') {
-      return kValue.f32.infinity.positive;
+      return kValue.f32.positive.infinity;
     } else {
-      return kValue.f32.infinity.negative;
+      return kValue.f32.negative.infinity;
     }
   }
 
@@ -276,11 +268,11 @@ export function nextAfterF16(val: number, dir: NextDirection, mode: FlushMode): 
   }
 
   if (val === Number.POSITIVE_INFINITY) {
-    return kValue.f16.infinity.positive;
+    return kValue.f16.positive.infinity;
   }
 
   if (val === Number.NEGATIVE_INFINITY) {
-    return kValue.f16.infinity.negative;
+    return kValue.f16.negative.infinity;
   }
 
   assert(
@@ -293,9 +285,9 @@ export function nextAfterF16(val: number, dir: NextDirection, mode: FlushMode): 
   // -/+0 === 0 returns true
   if (val === 0) {
     if (dir === 'positive') {
-      return mode === 'flush' ? kValue.f16.positive.min : kValue.f16.subnormal.positive.min;
+      return mode === 'flush' ? kValue.f16.positive.min : kValue.f16.positive.subnormal.min;
     } else {
-      return mode === 'flush' ? kValue.f16.negative.max : kValue.f16.subnormal.negative.max;
+      return mode === 'flush' ? kValue.f16.negative.max : kValue.f16.negative.subnormal.max;
     }
   }
 
@@ -318,9 +310,9 @@ export function nextAfterF16(val: number, dir: NextDirection, mode: FlushMode): 
   // Checking for overflow
   if ((nextAfterF16Hex[0] & 0x7c00) === 0x7c00) {
     if (dir === 'positive') {
-      return kValue.f16.infinity.positive;
+      return kValue.f16.positive.infinity;
     } else {
-      return kValue.f16.infinity.negative;
+      return kValue.f16.negative.infinity;
     }
   }
 
@@ -529,21 +521,20 @@ export function correctlyRoundedF32(n: number): number[] {
 
   // f32 finite
   if (n <= kValue.f32.positive.max && n >= kValue.f32.negative.min) {
-    const n_32 = new Float32Array([n])[0];
-    const converted: number = n_32;
-    if (n === converted) {
+    const n_32 = quantizeToF32(n);
+    if (n === n_32) {
       // n is precisely expressible as a f32, so should not be rounded
       return [n];
     }
 
-    if (converted > n) {
+    if (n_32 > n) {
       // n_32 rounded towards +inf, so is after n
       const other = nextAfterF32(n_32, 'negative', 'no-flush');
-      return [other, converted];
+      return [other, n_32];
     } else {
       // n_32 rounded towards -inf, so is before n
       const other = nextAfterF32(n_32, 'positive', 'no-flush');
-      return [converted, other];
+      return [n_32, other];
     }
   }
 
@@ -598,21 +589,20 @@ export function correctlyRoundedF16(n: number): number[] {
 
   // f16 finite
   if (n <= kValue.f16.positive.max && n >= kValue.f16.negative.min) {
-    const n_16 = new Float16Array([n])[0];
-    const converted: number = n_16;
-    if (n === converted) {
+    const n_16 = quantizeToF16(n);
+    if (n === n_16) {
       // n is precisely expressible as a f16, so should not be rounded
       return [n];
     }
 
-    if (converted > n) {
+    if (n_16 > n) {
       // n_16 rounded towards +inf, so is after n
       const other = nextAfterF16(n_16, 'negative', 'no-flush');
-      return [other, converted];
+      return [other, n_16];
     } else {
       // n_16 rounded towards -inf, so is before n
       const other = nextAfterF16(n_16, 'positive', 'no-flush');
-      return [converted, other];
+      return [n_16, other];
     }
   }
 
@@ -916,14 +906,17 @@ export function fullF32Range(
   const bit_fields = [
     ...linearRange(kBit.f32.negative.min, kBit.f32.negative.max, counts.neg_norm),
     ...linearRange(
-      kBit.f32.subnormal.negative.min,
-      kBit.f32.subnormal.negative.max,
+      kBit.f32.negative.subnormal.min,
+      kBit.f32.negative.subnormal.max,
       counts.neg_sub
     ),
+    // -0.0
+    0x80000000,
+    // +0.0
     0,
     ...linearRange(
-      kBit.f32.subnormal.positive.min,
-      kBit.f32.subnormal.positive.max,
+      kBit.f32.positive.subnormal.min,
+      kBit.f32.positive.subnormal.max,
       counts.pos_sub
     ),
     ...linearRange(kBit.f32.positive.min, kBit.f32.positive.max, counts.pos_norm),
@@ -980,14 +973,17 @@ export function fullF16Range(
   const bit_fields = [
     ...linearRange(kBit.f16.negative.min, kBit.f16.negative.max, counts.neg_norm),
     ...linearRange(
-      kBit.f16.subnormal.negative.min,
-      kBit.f16.subnormal.negative.max,
+      kBit.f16.negative.subnormal.min,
+      kBit.f16.negative.subnormal.max,
       counts.neg_sub
     ),
+    // -0.0
+    0x8000,
+    // +0.0
     0,
     ...linearRange(
-      kBit.f16.subnormal.positive.min,
-      kBit.f16.subnormal.positive.max,
+      kBit.f16.positive.subnormal.min,
+      kBit.f16.positive.subnormal.max,
       counts.pos_sub
     ),
     ...linearRange(kBit.f16.positive.min, kBit.f16.positive.max, counts.pos_norm),
@@ -1028,14 +1024,17 @@ export function fullF64Range(
   const bit_fields = [
     ...linearRangeBigInt(kBit.f64.negative.min, kBit.f64.negative.max, counts.neg_norm),
     ...linearRangeBigInt(
-      kBit.f64.subnormal.negative.min,
-      kBit.f64.subnormal.negative.max,
+      kBit.f64.negative.subnormal.min,
+      kBit.f64.negative.subnormal.max,
       counts.neg_sub
     ),
+    // -0.0
+    0x8000_0000_0000_0000n,
+    // +0.0
     0n,
     ...linearRangeBigInt(
-      kBit.f64.subnormal.positive.min,
-      kBit.f64.subnormal.positive.max,
+      kBit.f64.positive.subnormal.min,
+      kBit.f64.positive.subnormal.max,
       counts.pos_sub
     ),
     ...linearRangeBigInt(kBit.f64.positive.min, kBit.f64.positive.max, counts.pos_norm),
@@ -1084,14 +1083,17 @@ export function filteredF64Range(
   const bit_fields = [
     ...linearRangeBigInt(u64_begin, kBit.f64.negative.max, counts.neg_norm),
     ...linearRangeBigInt(
-      kBit.f64.subnormal.negative.min,
-      kBit.f64.subnormal.negative.max,
+      kBit.f64.negative.subnormal.min,
+      kBit.f64.negative.subnormal.max,
       counts.neg_sub
     ),
+    // -0.0
+    0x8000_0000_0000_0000n,
+    // +0.0
     0n,
     ...linearRangeBigInt(
-      kBit.f64.subnormal.positive.min,
-      kBit.f64.subnormal.positive.max,
+      kBit.f64.positive.subnormal.min,
+      kBit.f64.positive.subnormal.max,
       counts.pos_sub
     ),
     ...linearRangeBigInt(kBit.f64.positive.min, u64_end, counts.pos_norm),
@@ -1265,12 +1267,12 @@ const kInterestingF32Values: number[] = [
   -1.0,
   -0.125,
   kValue.f32.negative.max,
-  kValue.f32.subnormal.negative.min,
-  kValue.f32.subnormal.negative.max,
+  kValue.f32.negative.subnormal.min,
+  kValue.f32.negative.subnormal.max,
   -0.0,
   0.0,
-  kValue.f32.subnormal.positive.min,
-  kValue.f32.subnormal.positive.max,
+  kValue.f32.positive.subnormal.min,
+  kValue.f32.positive.subnormal.max,
   kValue.f32.positive.min,
   0.125,
   1.0,
@@ -1501,12 +1503,12 @@ const kInterestingF16Values: number[] = [
   -1.0,
   -0.125,
   kValue.f16.negative.max,
-  kValue.f16.subnormal.negative.min,
-  kValue.f16.subnormal.negative.max,
+  kValue.f16.negative.subnormal.min,
+  kValue.f16.negative.subnormal.max,
   -0.0,
   0.0,
-  kValue.f16.subnormal.positive.min,
-  kValue.f16.subnormal.positive.max,
+  kValue.f16.positive.subnormal.min,
+  kValue.f16.positive.subnormal.max,
   kValue.f16.positive.min,
   0.125,
   1.0,
@@ -1737,12 +1739,12 @@ const kInterestingF64Values: number[] = [
   -1.0,
   -0.125,
   kValue.f64.negative.max,
-  kValue.f64.subnormal.negative.min,
-  kValue.f64.subnormal.negative.max,
+  kValue.f64.negative.subnormal.min,
+  kValue.f64.negative.subnormal.max,
   -0.0,
   0.0,
-  kValue.f64.subnormal.positive.min,
-  kValue.f64.subnormal.positive.max,
+  kValue.f64.positive.subnormal.min,
+  kValue.f64.positive.subnormal.max,
   kValue.f64.positive.min,
   0.125,
   1.0,
@@ -2004,14 +2006,22 @@ export interface QuantizeFunc {
   (num: number): number;
 }
 
+/** Statically allocate working data, so it doesn't need per-call creation */
+const quantizeToF32Data = new Float32Array(new ArrayBuffer(4));
+
 /** @returns the closest 32-bit floating point value to the input */
 export function quantizeToF32(num: number): number {
-  return f32(num).value as number;
+  quantizeToF32Data[0] = num;
+  return quantizeToF32Data[0];
 }
+
+/** Statically allocate working data, so it doesn't need per-call creation */
+const quantizeToF16Data = new Float16Array(new ArrayBuffer(2));
 
 /** @returns the closest 16-bit floating point value to the input */
 export function quantizeToF16(num: number): number {
-  return f16(num).value as number;
+  quantizeToF16Data[0] = num;
+  return quantizeToF16Data[0];
 }
 
 /** @returns the closest 32-bit signed integer value to the input */

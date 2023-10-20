@@ -1481,6 +1481,84 @@ export class FPTraits {
   }
 
   /**
+   * @returns a Case for the params and the component-wise interval generator provided.
+   * The Case will use an interval comparator for matching results.
+   * @param param0 the first vector param to pass in
+   * @param param1 the second vector param to pass in
+   * @param param2 the scalar param to pass in
+   * @param filter what interval filtering to apply
+   * @param componentWiseOps callbacks that implement generating a component-wise acceptance interval,
+   *                         one component result at a time.
+   */
+  makeVectorPairScalarToVectorComponentWiseCase(
+  param0,
+  param1,
+  param2,
+  filter,
+  ...componentWiseOps)
+  {
+    // Width of input vector
+    const width = param0.length;
+    assert(2 <= width && width <= 4, 'input vector width must between 2 and 4');
+    assert(param1.length === width, 'two input vectors must have the same width');
+    param0 = param0.map(this.quantize);
+    param1 = param1.map(this.quantize);
+    param2 = this.quantize(param2);
+
+    // Call the component-wise interval generator and build the expectation FPVector
+    const results = componentWiseOps.map((o) => {
+      return param0.map((el0, index) => o(el0, param1[index], param2));
+    });
+    if (filter === 'finite' && results.some((r) => r.some((e) => !e.isFinite()))) {
+      return undefined;
+    }
+    return {
+      input: [
+      toVector(param0, this.scalarBuilder),
+      toVector(param1, this.scalarBuilder),
+      this.scalarBuilder(param2)],
+
+      expected: anyOf(...results)
+    };
+  }
+
+  /**
+   * @returns an array of Cases for operations over a range of inputs
+   * @param param0s array of first vector inputs to try
+   * @param param1s array of second vector inputs to try
+   * @param param2s array of scalar inputs to try
+   * @param filter what interval filtering to apply
+   * @param componentWiseOpscallbacks that implement generating a component-wise acceptance interval
+   */
+  generateVectorPairScalarToVectorComponentWiseCase(
+  param0s,
+  param1s,
+  param2s,
+  filter,
+  ...componentWiseOps)
+  {
+    // Cannot use cartesianProduct here, due to heterogeneous types
+    const cases = [];
+    param0s.forEach((param0) => {
+      param1s.forEach((param1) => {
+        param2s.forEach((param2) => {
+          const c = this.makeVectorPairScalarToVectorComponentWiseCase(
+          param0,
+          param1,
+          param2,
+          filter,
+          ...componentWiseOps);
+
+          if (c !== undefined) {
+            cases.push(c);
+          }
+        });
+      });
+    });
+    return cases;
+  }
+
+  /**
    * @returns a Case for the param and an array of interval generators provided
    * @param param the param to pass in
    * @param filter what interval filtering to apply
@@ -3407,37 +3485,52 @@ export class FPTraits {
   /** Calculate an acceptance interval of inverseSqrt(x) */
 
 
-  // This op should be implemented differently for f32 and f16.
   LdexpIntervalOp = {
-    impl: this.limitScalarPairToIntervalDomain(
-    // Implementing SPIR-V's more restrictive domain until
-    // https://github.com/gpuweb/gpuweb/issues/3134 is resolved
-    {
-      x: [this.toInterval([kValue.f32.negative.min, kValue.f32.positive.max])],
-      y: [this.toInterval([-126, 128])]
-    },
-    (e1, e2) => {
-      // Though the spec says the result of ldexp(e1, e2) = e1 * 2 ^ e2, the
-      // accuracy is listed as correctly rounded to the true value, so the
-      // inheritance framework does not need to be invoked to determine
-      // bounds.
+    impl: (e1, e2) => {
+      assert(this.kind === 'f32' || this.kind === 'f16');
+      assert(Number.isInteger(e2), 'the second param of ldexp must be an integer');
+      const bias = this.kind === 'f32' ? 127 : 15;
+      // Spec explicitly calls indeterminate value if e2 > bias + 1
+      if (e2 > bias + 1) {
+        return this.constants().unboundedInterval;
+      }
+      // The spec says the result of ldexp(e1, e2) = e1 * 2 ^ e2, and the accuracy is correctly
+      // rounded to the true value, so the inheritance framework does not need to be invoked to
+      // determine bounds.
       // Instead, the value at a higher precision is calculated and passed to
       // correctlyRoundedInterval.
       const result = e1 * 2 ** e2;
-      if (Number.isNaN(result)) {
-        // Overflowed TS's number type, so definitely out of bounds for f32
+      if (!Number.isFinite(result)) {
+        // Overflowed TS's number type, so definitely out of bounds for f32/f16
         return this.constants().unboundedInterval;
       }
+      // The result may be zero if e2 + bias <= 0, but we can't simply span the interval to 0.0.
+      // For example, for f32 input e1 = 2**120 and e2 = -130, e2 + bias = -3 <= 0, but
+      // e1 * 2 ** e2 = 2**-10, so the valid result is 2**-10 or 0.0, instead of [0.0, 2**-10].
+      // Always return the correctly-rounded interval, and special examination should be taken when
+      // using the result.
       return this.correctlyRoundedInterval(result);
-    })
-
+    }
   };
 
   ldexpIntervalImpl(e1, e2) {
-    return this.roundAndFlushScalarPairToInterval(e1, e2, this.LdexpIntervalOp);
+    // Only round and flush e1, as e2 is of integer type (i32 or abstract integer) and should be
+    // precise.
+    return this.roundAndFlushScalarToInterval(e1, {
+      impl: (e1) => this.LdexpIntervalOp.impl(e1, e2)
+    });
   }
 
-  /** Calculate an acceptance interval of ldexp(e1, e2) */
+  /**
+   * Calculate an acceptance interval of ldexp(e1, e2), where e2 is integer
+   *
+   * Spec indicate that the result may be zero if e2 + bias <= 0, no matter how large
+   * was e1 * 2 ** e2, i.e. the actual valid result is correctlyRounded(e1 * 2 ** e2) or 0.0, if
+   * e2 + bias <= 0. Such discontinious flush-to-zero behavior is hard to be expressed using
+   * FPInterval, therefore in the situation of e2 + bias <= 0 the returned interval would be just
+   * correctlyRounded(e1 * 2 ** e2), and special examination should be taken when using the result.
+   *
+   */
 
 
   LengthIntervalScalarOp = {
@@ -3655,7 +3748,7 @@ export class FPTraits {
     const rows = mat[0].length;
     return this.toMatrix(
     unflatten2DArray(
-    flatten2DArray(mat).map((e) => this.MultiplicationIntervalOp.impl(e, scalar)),
+    flatten2DArray(mat).map((e) => this.multiplicationInterval(e, scalar)),
     cols,
     rows));
 
@@ -3830,7 +3923,7 @@ export class FPTraits {
 
   /**
    * refract is a singular function in the sense that it is the only builtin that
-   * takes in (FPVector, FPVector, F32) and returns FPVector and is basically
+   * takes in (FPVector, FPVector, F32/F16) and returns FPVector and is basically
    * defined in terms of other functions.
    *
    * Instead of implementing all the framework code to integrate it with its
@@ -4186,12 +4279,12 @@ class F32Traits extends FPTraits {
     positive: {
       min: kValue.f32.positive.min,
       max: kValue.f32.positive.max,
-      infinity: kValue.f32.infinity.positive,
+      infinity: kValue.f32.positive.infinity,
       nearest_max: kValue.f32.positive.nearest_max,
       less_than_one: kValue.f32.positive.less_than_one,
       subnormal: {
-        min: kValue.f32.subnormal.positive.min,
-        max: kValue.f32.subnormal.positive.max
+        min: kValue.f32.positive.subnormal.min,
+        max: kValue.f32.positive.subnormal.max
       },
       pi: {
         whole: kValue.f32.positive.pi.whole,
@@ -4206,12 +4299,12 @@ class F32Traits extends FPTraits {
     negative: {
       min: kValue.f32.negative.min,
       max: kValue.f32.negative.max,
-      infinity: kValue.f32.infinity.negative,
+      infinity: kValue.f32.negative.infinity,
       nearest_min: kValue.f32.negative.nearest_min,
       less_than_one: kValue.f32.negative.less_than_one,
       subnormal: {
-        min: kValue.f32.subnormal.negative.min,
-        max: kValue.f32.subnormal.negative.max
+        min: kValue.f32.negative.subnormal.min,
+        max: kValue.f32.negative.subnormal.max
       },
       pi: {
         whole: kValue.f32.negative.pi.whole,
@@ -4233,7 +4326,7 @@ class F32Traits extends FPTraits {
 
     greaterThanZeroInterval: new FPInterval(
     'f32',
-    kValue.f32.subnormal.positive.min,
+    kValue.f32.positive.subnormal.min,
     kValue.f32.positive.max),
 
     zeroVector: {
@@ -4649,12 +4742,12 @@ class FPAbstractTraits extends FPTraits {
     positive: {
       min: kValue.f64.positive.min,
       max: kValue.f64.positive.max,
-      infinity: kValue.f64.infinity.positive,
+      infinity: kValue.f64.positive.infinity,
       nearest_max: kValue.f64.positive.nearest_max,
       less_than_one: kValue.f64.positive.less_than_one,
       subnormal: {
-        min: kValue.f64.subnormal.positive.min,
-        max: kValue.f64.subnormal.positive.max
+        min: kValue.f64.positive.subnormal.min,
+        max: kValue.f64.positive.subnormal.max
       },
       pi: {
         whole: kValue.f64.positive.pi.whole,
@@ -4669,12 +4762,12 @@ class FPAbstractTraits extends FPTraits {
     negative: {
       min: kValue.f64.negative.min,
       max: kValue.f64.negative.max,
-      infinity: kValue.f64.infinity.negative,
+      infinity: kValue.f64.negative.infinity,
       nearest_min: kValue.f64.negative.nearest_min,
       less_than_one: kValue.f64.negative.less_than_one,
       subnormal: {
-        min: kValue.f64.subnormal.negative.min,
-        max: kValue.f64.subnormal.negative.max
+        min: kValue.f64.negative.subnormal.min,
+        max: kValue.f64.negative.subnormal.max
       },
       pi: {
         whole: kValue.f64.negative.pi.whole,
@@ -4696,7 +4789,7 @@ class FPAbstractTraits extends FPTraits {
 
     greaterThanZeroInterval: new FPInterval(
     'abstract',
-    kValue.f64.subnormal.positive.min,
+    kValue.f64.positive.subnormal.min,
     kValue.f64.positive.max),
 
     zeroVector: {
@@ -4890,7 +4983,7 @@ class FPAbstractTraits extends FPTraits {
   exp2Interval = this.unimplementedScalarToInterval.bind(this, 'exp2Interval');
   faceForwardIntervals = this.unimplementedFaceForward.bind(this);
   floorInterval = this.unimplementedScalarToInterval.bind(this, 'floorInterval');
-  fmaInterval = this.unimplementedScalarTripleToInterval.bind(this, 'fmaInterval');
+  fmaInterval = this.fmaIntervalImpl.bind(this);
   fractInterval = this.unimplementedScalarToInterval.bind(this, 'fractInterval');
   inverseSqrtInterval = this.unimplementedScalarToInterval.bind(
   this,
@@ -4914,7 +5007,7 @@ class FPAbstractTraits extends FPTraits {
   'mixPreciseInterval');
 
   mixIntervals = [this.mixImpreciseInterval, this.mixPreciseInterval];
-  modfInterval = this.unimplementedModf.bind(this);
+  modfInterval = this.modfIntervalImpl.bind(this);
   multiplicationInterval = this.multiplicationIntervalImpl.bind(this);
   multiplicationMatrixMatrixInterval = this.unimplementedMatrixPairToMatrix.bind(
   this,
@@ -4992,12 +5085,12 @@ class F16Traits extends FPTraits {
     positive: {
       min: kValue.f16.positive.min,
       max: kValue.f16.positive.max,
-      infinity: kValue.f16.infinity.positive,
+      infinity: kValue.f16.positive.infinity,
       nearest_max: kValue.f16.positive.nearest_max,
       less_than_one: kValue.f16.positive.less_than_one,
       subnormal: {
-        min: kValue.f16.subnormal.positive.min,
-        max: kValue.f16.subnormal.positive.max
+        min: kValue.f16.positive.subnormal.min,
+        max: kValue.f16.positive.subnormal.max
       },
       pi: {
         whole: kValue.f16.positive.pi.whole,
@@ -5012,12 +5105,12 @@ class F16Traits extends FPTraits {
     negative: {
       min: kValue.f16.negative.min,
       max: kValue.f16.negative.max,
-      infinity: kValue.f16.infinity.negative,
+      infinity: kValue.f16.negative.infinity,
       nearest_min: kValue.f16.negative.nearest_min,
       less_than_one: kValue.f16.negative.less_than_one,
       subnormal: {
-        min: kValue.f16.subnormal.negative.min,
-        max: kValue.f16.subnormal.negative.max
+        min: kValue.f16.negative.subnormal.min,
+        max: kValue.f16.negative.subnormal.max
       },
       pi: {
         whole: kValue.f16.negative.pi.whole,
@@ -5039,7 +5132,7 @@ class F16Traits extends FPTraits {
 
     greaterThanZeroInterval: new FPInterval(
     'f16',
-    kValue.f16.subnormal.positive.min,
+    kValue.f16.positive.subnormal.min,
     kValue.f16.positive.max),
 
     zeroVector: {
@@ -5183,63 +5276,45 @@ class F16Traits extends FPTraits {
   // Framework - API - Overrides
   absInterval = this.absIntervalImpl.bind(this);
   acosInterval = this.acosIntervalImpl.bind(this);
-  acoshAlternativeInterval = this.unimplementedScalarToInterval.bind(
-  this,
-  'acoshAlternativeInterval');
-
-  acoshPrimaryInterval = this.unimplementedScalarToInterval.bind(
-  this,
-  'acoshPrimaryInterval');
-
+  acoshAlternativeInterval = this.acoshAlternativeIntervalImpl.bind(this);
+  acoshPrimaryInterval = this.acoshPrimaryIntervalImpl.bind(this);
   acoshIntervals = [this.acoshAlternativeInterval, this.acoshPrimaryInterval];
   additionInterval = this.additionIntervalImpl.bind(this);
   additionMatrixMatrixInterval = this.additionMatrixMatrixIntervalImpl.bind(this);
   asinInterval = this.asinIntervalImpl.bind(this);
-  asinhInterval = this.unimplementedScalarToInterval.bind(this, 'asinhInterval');
+  asinhInterval = this.asinhIntervalImpl.bind(this);
   atanInterval = this.atanIntervalImpl.bind(this);
   atan2Interval = this.atan2IntervalImpl.bind(this);
-  atanhInterval = this.unimplementedScalarToInterval.bind(this, 'atanhInterval');
+  atanhInterval = this.atanhIntervalImpl.bind(this);
   ceilInterval = this.ceilIntervalImpl.bind(this);
   clampMedianInterval = this.clampMedianIntervalImpl.bind(this);
   clampMinMaxInterval = this.clampMinMaxIntervalImpl.bind(this);
   clampIntervals = [this.clampMedianInterval, this.clampMinMaxInterval];
   cosInterval = this.cosIntervalImpl.bind(this);
-  coshInterval = this.unimplementedScalarToInterval.bind(this, 'coshInterval');
+  coshInterval = this.coshIntervalImpl.bind(this);
   crossInterval = this.crossIntervalImpl.bind(this);
   degreesInterval = this.degreesIntervalImpl.bind(this);
-  determinantInterval = this.unimplementedMatrixToInterval.bind(
-  this,
-  'determinantInterval');
-
-  distanceInterval = this.unimplementedDistance.bind(this);
+  determinantInterval = this.determinantIntervalImpl.bind(this);
+  distanceInterval = this.distanceIntervalImpl.bind(this);
   divisionInterval = this.divisionIntervalImpl.bind(this);
   dotInterval = this.dotIntervalImpl.bind(this);
   expInterval = this.expIntervalImpl.bind(this);
   exp2Interval = this.exp2IntervalImpl.bind(this);
-  faceForwardIntervals = this.unimplementedFaceForward.bind(this);
+  faceForwardIntervals = this.faceForwardIntervalsImpl.bind(this);
   floorInterval = this.floorIntervalImpl.bind(this);
-  fmaInterval = this.unimplementedScalarTripleToInterval.bind(this, 'fmaInterval');
-  fractInterval = this.unimplementedScalarToInterval.bind(this, 'fractInterval');
+  fmaInterval = this.fmaIntervalImpl.bind(this);
+  fractInterval = this.fractIntervalImpl.bind(this);
   inverseSqrtInterval = this.inverseSqrtIntervalImpl.bind(this);
-  ldexpInterval = this.unimplementedScalarPairToInterval.bind(
-  this,
-  'ldexpInterval');
-
-  lengthInterval = this.unimplementedLength.bind(this);
+  ldexpInterval = this.ldexpIntervalImpl.bind(this);
+  lengthInterval = this.lengthIntervalImpl.bind(this);
   logInterval = this.logIntervalImpl.bind(this);
   log2Interval = this.log2IntervalImpl.bind(this);
   maxInterval = this.maxIntervalImpl.bind(this);
   minInterval = this.minIntervalImpl.bind(this);
-  mixImpreciseInterval = this.unimplementedScalarTripleToInterval.bind(
-  this,
-  'mixImpreciseInterval');
-
-  mixPreciseInterval = this.unimplementedScalarTripleToInterval.bind(
-  this,
-  'mixPreciseInterval');
-
+  mixImpreciseInterval = this.mixImpreciseIntervalImpl.bind(this);
+  mixPreciseInterval = this.mixPreciseIntervalImpl.bind(this);
   mixIntervals = [this.mixImpreciseInterval, this.mixPreciseInterval];
-  modfInterval = this.unimplementedModf.bind(this);
+  modfInterval = this.modfIntervalImpl.bind(this);
   multiplicationInterval = this.multiplicationIntervalImpl.bind(this);
   multiplicationMatrixMatrixInterval = this.multiplicationMatrixMatrixIntervalImpl.bind(
   this);
@@ -5257,36 +5332,27 @@ class F16Traits extends FPTraits {
   this);
 
   negationInterval = this.negationIntervalImpl.bind(this);
-  normalizeInterval = this.unimplementedVectorToVector.bind(
-  this,
-  'normalizeInterval');
-
-  powInterval = this.unimplementedScalarPairToInterval.bind(this, 'powInterval');
+  normalizeInterval = this.normalizeIntervalImpl.bind(this);
+  powInterval = this.powIntervalImpl.bind(this);
   quantizeToF16Interval = this.quantizeToF16IntervalNotAvailable.bind(this);
   radiansInterval = this.radiansIntervalImpl.bind(this);
-  reflectInterval = this.unimplementedVectorPairToVector.bind(
-  this,
-  'reflectInterval');
-
-  refractInterval = this.unimplementedRefract.bind(this);
+  reflectInterval = this.reflectIntervalImpl.bind(this);
+  refractInterval = this.refractIntervalImpl.bind(this);
   remainderInterval = this.remainderIntervalImpl.bind(this);
   roundInterval = this.roundIntervalImpl.bind(this);
   saturateInterval = this.saturateIntervalImpl.bind(this);
   signInterval = this.signIntervalImpl.bind(this);
   sinInterval = this.sinIntervalImpl.bind(this);
-  sinhInterval = this.unimplementedScalarToInterval.bind(this, 'sinhInterval');
-  smoothStepInterval = this.unimplementedScalarTripleToInterval.bind(
-  this,
-  'smoothStepInterval');
-
+  sinhInterval = this.sinhIntervalImpl.bind(this);
+  smoothStepInterval = this.smoothStepIntervalImpl.bind(this);
   sqrtInterval = this.sqrtIntervalImpl.bind(this);
   stepInterval = this.stepIntervalImpl.bind(this);
   subtractionInterval = this.subtractionIntervalImpl.bind(this);
   subtractionMatrixMatrixInterval = this.subtractionMatrixMatrixIntervalImpl.bind(
   this);
 
-  tanInterval = this.unimplementedScalarToInterval.bind(this, 'tanInterval');
-  tanhInterval = this.unimplementedScalarToInterval.bind(this, 'tanhInterval');
+  tanInterval = this.tanIntervalImpl.bind(this);
+  tanhInterval = this.tanhIntervalImpl.bind(this);
   transposeInterval = this.transposeIntervalImpl.bind(this);
   truncInterval = this.truncIntervalImpl.bind(this);
 
