@@ -20,6 +20,16 @@ import { UnitTest } from './unit_test.js';
 
 export const g = makeTestGroup(UnitTest);
 
+/**
+ * For ULP purposes, abstract float behaves like f32, so need to swizzle it in
+ * for expectations.
+ */
+const kFPTraitForULP = {
+  abstract: 'f32',
+  f32: 'f32',
+  f16: 'f16',
+} as const;
+
 /** Bounds indicating an expectation of unbounded error */
 const kUnboundedBounds: IntervalBounds = [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY];
 
@@ -2079,15 +2089,16 @@ const kULPErrorValue = {
 g.test('ulpInterval')
   .params(u =>
     u
-      .combine('trait', ['f32', 'f16'] as const)
+      .combine('trait', ['abstract', 'f32', 'f16'] as const)
       .beginSubcases()
       .expandWithParams<ULPCase>(p => {
-        const constants = FP[p.trait].constants();
-        const ULPValue = kULPErrorValue[p.trait];
-        const plusOneULP = kPlusOneULPFunctions[p.trait];
-        const plusNULP = kPlusNULPFunctions[p.trait];
-        const minusOneULP = kMinusOneULPFunctions[p.trait];
-        const minusNULP = kMinusNULPFunctions[p.trait];
+        const trait = kFPTraitForULP[p.trait];
+        const constants = FP[trait].constants();
+        const ULPValue = kULPErrorValue[trait];
+        const plusOneULP = kPlusOneULPFunctions[trait];
+        const plusNULP = kPlusNULPFunctions[trait];
+        const minusOneULP = kMinusOneULPFunctions[trait];
+        const minusNULP = kMinusNULPFunctions[trait];
         // prettier-ignore
         return [
           // Edge Cases
@@ -3015,12 +3026,20 @@ const kFloorIntervalCases = {
     { input: -(2 ** 14), expected: -(2 ** 14) },
     { input: 0x8000, expected: 0x8000 }, // https://github.com/gpuweb/cts/issues/2766
   ],
+  abstract: [
+    { input: 2 ** 62, expected: 2 ** 62 },
+    { input: -(2 ** 62), expected: -(2 ** 62) },
+    {
+      input: 0x8000_0000_0000_0000,
+      expected: 0x8000_0000_0000_0000,
+    }, // https://github.com/gpuweb/cts/issues/2766
+  ],
 } as const;
 
 g.test('floorInterval')
   .params(u =>
     u
-      .combine('trait', ['f32', 'f16'] as const)
+      .combine('trait', ['f32', 'f16', 'abstract'] as const)
       .beginSubcases()
       .expandWithParams<ScalarToIntervalCase>(p => {
         const constants = FP[p.trait].constants();
@@ -3047,7 +3066,7 @@ g.test('floorInterval')
           { input: constants.negative.max, expected: -1 },
           ...kFloorIntervalCases[p.trait],
 
-          // 32-bit subnormals
+          // Subnormals
           { input: constants.positive.subnormal.max, expected: 0 },
           { input: constants.positive.subnormal.min, expected: 0 },
           { input: constants.negative.subnormal.min, expected: [-1, 0] },
@@ -3636,7 +3655,7 @@ g.test('saturateInterval')
 g.test('signInterval')
   .params(u =>
     u
-      .combine('trait', ['f32', 'f16'] as const)
+      .combine('trait', ['f32', 'f16', 'abstract'] as const)
       .beginSubcases()
       .expandWithParams<ScalarToIntervalCase>(p => {
         const constants = FP[p.trait].constants();
@@ -4364,11 +4383,14 @@ const kDivisionInterval64BitsNormalCases = {
 g.test('divisionInterval')
   .params(u =>
     u
-      .combine('trait', ['f32', 'f16'] as const)
+      .combine('trait', ['abstract', 'f32', 'f16'] as const)
       .beginSubcases()
       .expandWithParams<ScalarPairToIntervalCase>(p => {
-        const trait = FP[p.trait];
-        const constants = trait.constants();
+        // This is a ULP based interval, so abstract should behave like f32, so
+        // swizzling the trait as needed.
+        const trait = p.trait === 'abstract' ? 'f32' : p.trait;
+        const fp = FP[trait];
+        const constants = fp.constants();
         // prettier-ignore
         return [
           // Representable normals
@@ -4384,7 +4406,7 @@ g.test('divisionInterval')
           { input: [-4, -2], expected: 2 },
 
           // 64-bit normals that can not be exactly represented
-          ...kDivisionInterval64BitsNormalCases[p.trait],
+          ...kDivisionInterval64BitsNormalCases[trait],
 
           // Denominator out of range
           { input: [1, constants.positive.infinity], expected: kUnboundedBounds },
@@ -4400,17 +4422,21 @@ g.test('divisionInterval')
       })
   )
   .fn(t => {
-    const trait = FP[t.params.trait];
+    // This is a ULP based interval, so abstract should behave like f32, so
+    // swizzling the trait as needed for calculating the expected result.
+    const trait = t.params.trait === 'abstract' ? 'f32' : t.params.trait;
+    const fp = FP[trait];
 
     const error = (n: number): number => {
-      return 2.5 * trait.oneULP(n);
+      return 2.5 * fp.oneULP(n);
     };
 
     const [x, y] = t.params.input;
     t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
 
-    const got = trait.divisionInterval(x, y);
+    // Do not swizzle here, so the correct implementation under test is called.
+    const expected = FP[t.params.trait].toInterval(t.params.expected);
+    const got = FP[t.params.trait].divisionInterval(x, y);
     t.expect(
       objectEquals(expected, got),
       `${t.params.trait}.divisionInterval(${x}, ${y}) returned ${got}. Expected ${expected}`
@@ -4835,14 +4861,15 @@ const kRemainderCases = {
 g.test('remainderInterval')
   .params(u =>
     u
-      .combine('trait', ['f32', 'f16'] as const)
+      .combine('trait', ['abstract', 'f32', 'f16'] as const)
       .beginSubcases()
       .expandWithParams<ScalarPairToIntervalCase>(p => {
-        const trait = FP[p.trait];
-        const constants = trait.constants();
+        const trait = kFPTraitForULP[p.trait];
+        const constants = FP[trait].constants();
+
         // prettier-ignore
         return [
-          ...kRemainderCases[p.trait],
+          ...kRemainderCases[trait],
           // Normals
           { input: [0, 1], expected: 0 },
           { input: [0, -1], expected: 0 },
@@ -4883,7 +4910,7 @@ g.test('remainderInterval')
     const got = trait.remainderInterval(x, y);
     t.expect(
       objectEquals(expected, got),
-      `FP.${t.params.trait}.remainderInterval(${x}, ${y}) returned ${got}. Expected ${expected}`
+      `${t.params.trait}.remainderInterval(${x}, ${y}) returned ${got}. Expected ${expected}`
     );
   });
 
