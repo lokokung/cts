@@ -2,6 +2,8 @@
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/import { assert, unreachable } from '../../common/util/util.js';import { Float16Array } from '../../external/petamoriken/float16/float16.js';
 
+
+
 import { anyOf } from './compare.js';
 import { kValue } from './constants.js';
 import {
@@ -9,12 +11,6 @@ abstractFloat,
 f16,
 f32,
 isFloatType,
-reinterpretF16AsU16,
-reinterpretF32AsU32,
-reinterpretF64AsU32s,
-reinterpretU16AsF16,
-reinterpretU32AsF32,
-reinterpretU32sAsF64,
 
 
 toMatrix,
@@ -46,17 +42,52 @@ unflatten2DArray,
 every2DArray } from
 './math.js';
 
-/** Indicate the kind of WGSL floating point numbers being operated on */
+/** Indicate the kind of WGSL floating point numbers being operated on */var
+
+
+SerializedFPIntervalKind;
 
 
 
 
 
+/** serializeFPKind() serializes a FPKind to a BinaryStream */(function (SerializedFPIntervalKind) {SerializedFPIntervalKind[SerializedFPIntervalKind["Abstract"] = 0] = "Abstract";SerializedFPIntervalKind[SerializedFPIntervalKind["F32"] = 1] = "F32";SerializedFPIntervalKind[SerializedFPIntervalKind["F16"] = 2] = "F16";})(SerializedFPIntervalKind || (SerializedFPIntervalKind = {}));
+export function serializeFPKind(s, value) {
+  switch (value) {
+    case 'abstract':
+      s.writeU8(SerializedFPIntervalKind.Abstract);
+      break;
+    case 'f16':
+      s.writeU8(SerializedFPIntervalKind.F16);
+      break;
+    case 'f32':
+      s.writeU8(SerializedFPIntervalKind.F32);
+      break;}
 
+}
 
+/** deserializeFPKind() deserializes a FPKind from a BinaryStream */
+export function deserializeFPKind(s) {
+  const kind = s.readU8();
+  switch (kind) {
+    case SerializedFPIntervalKind.Abstract:
+      return 'abstract';
+    case SerializedFPIntervalKind.F16:
+      return 'f16';
+    case SerializedFPIntervalKind.F32:
+      return 'f32';
+    default:
+      unreachable(`invalid deserialized FPKind: ${kind}`);}
 
+}
+// Containers
 
-
+/**
+ * Representation of bounds for an interval as an array with either one or two
+ * elements. Single element indicates that the interval is a single point. For
+ * two elements, the first is the lower bound of the interval and the second is
+ * the upper bound.
+ */
 
 
 /** Represents a closed interval of floating point numbers */
@@ -76,7 +107,8 @@ export class FPInterval {
   constructor(kind, ...bounds) {
     this.kind = kind;
 
-    const [begin, end] = bounds.length === 2 ? bounds : [bounds[0], bounds[0]];
+    const begin = bounds[0];
+    const end = bounds.length === 2 ? bounds[1] : bounds[0];
     assert(!Number.isNaN(begin) && !Number.isNaN(end), `bounds need to be non-NaN`);
     assert(begin <= end, `bounds[0] (${begin}) must be less than or equal to bounds[1]  (${end})`);
 
@@ -135,87 +167,72 @@ export class FPInterval {
   }
 }
 
-/**
- * SerializedFPInterval holds the serialized form of a FPInterval.
- * This form can be safely encoded to JSON.
- */
-
-
-
-
-
-
-
-
-/** serializeFPInterval() converts a FPInterval to a SerializedFPInterval */
-export function serializeFPInterval(i) {
+/** serializeFPInterval() serializes a FPInterval to a BinaryStream */
+export function serializeFPInterval(s, i) {
+  serializeFPKind(s, i.kind);
   const traits = FP[i.kind];
-  switch (i.kind) {
-    case 'abstract':{
-        if (i === traits.constants().unboundedInterval) {
-          return { kind: 'abstract', unbounded: true };
-        } else {
-          return {
-            kind: 'abstract',
-            unbounded: false,
-            begin: reinterpretF64AsU32s(i.begin),
-            end: reinterpretF64AsU32s(i.end)
-          };
-        }
-      }
-    case 'f32':{
-        if (i === traits.constants().unboundedInterval) {
-          return { kind: 'f32', unbounded: true };
-        } else {
-          return {
-            kind: 'f32',
-            unbounded: false,
-            begin: reinterpretF32AsU32(i.begin),
-            end: reinterpretF32AsU32(i.end)
-          };
-        }
-      }
-    case 'f16':{
-        if (i === traits.constants().unboundedInterval) {
-          return { kind: 'f16', unbounded: true };
-        } else {
-          return {
-            kind: 'f16',
-            unbounded: false,
-            begin: reinterpretF16AsU16(i.begin),
-            end: reinterpretF16AsU16(i.end)
-          };
-        }
-      }}
+  s.writeCond(i !== traits.constants().unboundedInterval, {
+    if_true: () => {
+      // Bounded
+      switch (i.kind) {
+        case 'abstract':
+          s.writeF64(i.begin);
+          s.writeF64(i.end);
+          break;
+        case 'f32':
+          s.writeF32(i.begin);
+          s.writeF32(i.end);
+          break;
+        case 'f16':
+          s.writeF16(i.begin);
+          s.writeF16(i.end);
+          break;
+        default:
+          unreachable(`Unable to serialize FPInterval ${i}`);
+          break;}
 
-  unreachable(`Unable to serialize FPInterval ${i}`);
+    },
+    if_false: () => {
+
+      // Unbounded
+    } });
 }
 
-/** serializeFPInterval() converts a SerializedFPInterval to a FPInterval */
-export function deserializeFPInterval(data) {
-  const kind = data.kind;
+/** deserializeFPInterval() deserializes a FPInterval from a BinaryStream */
+export function deserializeFPInterval(s) {
+  const kind = deserializeFPKind(s);
   const traits = FP[kind];
-  if (data.unbounded) {
-    return traits.constants().unboundedInterval;
-  }
-  switch (kind) {
-    case 'abstract':{
-        return traits.toInterval([reinterpretU32sAsF64(data.begin), reinterpretU32sAsF64(data.end)]);
-      }
-    case 'f32':{
-        return traits.toInterval([reinterpretU32AsF32(data.begin), reinterpretU32AsF32(data.end)]);
-      }
-    case 'f16':{
-        return traits.toInterval([reinterpretU16AsF16(data.begin), reinterpretU16AsF16(data.end)]);
-      }}
+  return s.readCond({
+    if_true: () => {
+      // Bounded
+      switch (kind) {
+        case 'abstract':
+          return new FPInterval(traits.kind, s.readF64(), s.readF64());
+        case 'f32':
+          return new FPInterval(traits.kind, s.readF32(), s.readF32());
+        case 'f16':
+          return new FPInterval(traits.kind, s.readF16(), s.readF16());}
 
-  unreachable(`Unable to deserialize data ${data}`);
+      unreachable(`Unable to deserialize FPInterval with kind ${kind}`);
+    },
+    if_false: () => {
+      // Unbounded
+      return traits.constants().unboundedInterval;
+    }
+  });
 }
 
 /**
  * Representation of a vec2/3/4 of floating point intervals as an array of
  * FPIntervals.
  */
+
+
+
+
+
+
+
 
 
 
@@ -712,7 +729,7 @@ export class FPTraits {
     }
 
     const f = v.map((e) => this.toInterval(e));
-    // The return of the map above is a FPInterval[], which needs to be narrowed
+    // The return of the map above is a readonly FPInterval[], which needs to be narrowed
     // to FPVector, since FPVector is defined as fixed length tuples.
     if (this.isVector(f)) {
       return f;
@@ -749,10 +766,10 @@ export class FPTraits {
     if (!m.every((c) => c.every((e) => e instanceof FPInterval && e.kind === this.kind))) {
       return false;
     }
-    // At this point m guaranteed to be a FPInterval[][], but maybe typed as a
+    // At this point m guaranteed to be a ROArrayArray<FPInterval>, but maybe typed as a
     // FPVector[].
     // Coercing the type since FPVector[] is functionally equivalent to
-    // FPInterval[][] for .length and .every, but they are type compatible,
+    // ROArrayArray<FPInterval> for .length and .every, but they are type compatible,
     // since tuples are not equivalent to arrays, so TS considers c in .every to
     // be unresolvable below, even though our usage is safe.
     m = m;
@@ -782,7 +799,7 @@ export class FPTraits {
 
     const result = map2DArray(m, this.toInterval.bind(this));
 
-    // The return of the map above is a FPInterval[][], which needs to be
+    // The return of the map above is a ROArrayArray<FPInterval>, which needs to be
     // narrowed to FPMatrix, since FPMatrix is defined as fixed length tuples.
     if (this.isMatrix(result)) {
       return result;
@@ -909,7 +926,10 @@ export class FPTraits {
   }
 
   /** Stub for vector to vector generator */
-  unimplementedVectorToVector(name, _x) {
+  unimplementedVectorToVector(
+  name,
+  _x)
+  {
     unreachable(`'${name}' is not yet implemented for '${this.kind}'`);
   }
 
@@ -996,7 +1016,10 @@ export class FPTraits {
   }
 
   /** Stub for distance generator */
-  unimplementedDistance(_x, _y) {
+  unimplementedDistance(
+  _x,
+  _y)
+  {
     unreachable(`'distance' is not yet implemented for '${this.kind}'`);
   }
 
@@ -1010,7 +1033,9 @@ export class FPTraits {
   }
 
   /** Stub for length generator */
-  unimplementedLength(_x) {
+  unimplementedLength(
+  _x)
+  {
     unreachable(`'length' is not yet implemented for '${this.kind}'`);
   }
 
@@ -1020,7 +1045,11 @@ export class FPTraits {
   }
 
   /** Stub for refract generator */
-  unimplementedRefract(_i, _s, _r) {
+  unimplementedRefract(
+  _i,
+  _s,
+  _r)
+  {
     unreachable(`'refract' is not yet implemented for '${this.kind}'`);
   }
 
@@ -2188,7 +2217,9 @@ export class FPTraits {
     const m_rounded = m_flat.map(this.correctlyRounded);
     const m_flushed = m_rounded.map(this.addFlushedIfNeeded.bind(this));
     const m_options = cartesianProduct(...m_flushed);
-    const m_inputs = m_options.map((e) => unflatten2DArray(e, num_cols, num_rows));
+    const m_inputs = m_options.map((e) =>
+    unflatten2DArray(e, num_cols, num_rows));
+
 
     const interval_matrices = new Set();
     m_inputs.forEach((inner_m) => {
@@ -2481,7 +2512,7 @@ export class FPTraits {
     const result_cols = result.length;
     const result_rows = result[0].length;
 
-    // FPMatrix has to be coerced to FPInterval[][] to use .every. This should
+    // FPMatrix has to be coerced to ROArrayArray<FPInterval> to use .every. This should
     // always be safe, since FPMatrix are defined as fixed length array of
     // arrays.
     return result.every((c) => c.every((r) => r.isFinite())) ?
@@ -3209,7 +3240,10 @@ export class FPTraits {
     }
   };
 
-  distanceIntervalImpl(x, y) {
+  distanceIntervalImpl(
+  x,
+  y)
+  {
     if (x instanceof Array && y instanceof Array) {
       assert(
       x.length === y.length,
@@ -3308,7 +3342,10 @@ export class FPTraits {
     }
   };
 
-  dotIntervalImpl(x, y) {
+  dotIntervalImpl(
+  x,
+  y)
+  {
     assert(x.length === y.length, `dot not defined for vectors with different lengths`);
     return this.runVectorPairToIntervalOp(this.toVector(x), this.toVector(y), this.DotIntervalOp);
   }
@@ -3809,7 +3846,10 @@ export class FPTraits {
 
 
 
-  multiplicationMatrixVectorIntervalImpl(x, y) {
+  multiplicationMatrixVectorIntervalImpl(
+  x,
+  y)
+  {
     const cols = x.length;
     const rows = x[0].length;
     assert(y.length === cols, `'mat${cols}x${rows} * vec${y.length}' is not defined`);
@@ -3823,7 +3863,10 @@ export class FPTraits {
 
 
 
-  multiplicationVectorMatrixIntervalImpl(x, y) {
+  multiplicationVectorMatrixIntervalImpl(
+  x,
+  y)
+  {
     const cols = y.length;
     const rows = y[0].length;
     assert(x.length === rows, `'vec${x.length} * mat${cols}x${rows}' is not defined`);
@@ -3931,6 +3974,9 @@ export class FPTraits {
   /** Calculate an acceptance interval of reflect(x, y) */
 
 
+
+
+
   /**
    * refract is a singular function in the sense that it is the only builtin that
    * takes in (FPVector, FPVector, F32/F16) and returns FPVector and is basically
@@ -3977,6 +4023,10 @@ export class FPTraits {
   }
 
   /** Calculate acceptance interval vectors of reflect(i, s, r) */
+
+
+
+
 
 
   RemainderIntervalOp = {
@@ -4608,6 +4658,21 @@ class F32Traits extends FPTraits {
 
   // Framework - API
 
+  QuantizeToF16IntervalOp = {
+    impl: (n) => {
+      const rounded = correctlyRoundedF16(n);
+      const flushed = addFlushedIfNeededF16(rounded);
+      return this.spanIntervals(...flushed.map((f) => this.toInterval(f)));
+    }
+  };
+
+  quantizeToF16IntervalImpl(n) {
+    return this.runScalarToIntervalOp(this.toInterval(n), this.QuantizeToF16IntervalOp);
+  }
+
+  /** Calculate an acceptance interval of quantizeToF16(x) */
+  quantizeToF16Interval = this.quantizeToF16IntervalImpl.bind(this);
+
   /**
    * Once-allocated ArrayBuffer/views to avoid overhead of allocation when
    * converting between numeric formats
@@ -4720,21 +4785,6 @@ class F32Traits extends FPTraits {
 
   /** Calculate an acceptance interval vector for unpack4x8unorm(x) */
   unpack4x8unormInterval = this.unpack4x8unormIntervalImpl.bind(this);
-
-  QuantizeToF16IntervalOp = {
-    impl: (n) => {
-      const rounded = correctlyRoundedF16(n);
-      const flushed = addFlushedIfNeededF16(rounded);
-      return this.spanIntervals(...flushed.map((f) => this.toInterval(f)));
-    }
-  };
-
-  quantizeToF16IntervalImpl(n) {
-    return this.runScalarToIntervalOp(this.toInterval(n), this.QuantizeToF16IntervalOp);
-  }
-
-  /** Calculate an acceptance interval of quantizeToF16(x) */
-  quantizeToF16Interval = this.quantizeToF16IntervalImpl.bind(this);
 }
 
 // Need to separately allocate f32 traits, so they can be referenced by
@@ -5055,10 +5105,6 @@ class FPAbstractTraits extends FPTraits {
   'normalizeInterval');
 
   powInterval = this.unimplementedScalarPairToInterval.bind(this, 'powInterval');
-  quantizeToF16Interval = this.unimplementedScalarToInterval.bind(
-  this,
-  'quantizeToF16Interval');
-
   radiansInterval = this.radiansIntervalImpl.bind(this);
   reflectInterval = this.unimplementedVectorPairToVector.bind(
   this,
@@ -5353,7 +5399,6 @@ class F16Traits extends FPTraits {
   negationInterval = this.negationIntervalImpl.bind(this);
   normalizeInterval = this.normalizeIntervalImpl.bind(this);
   powInterval = this.powIntervalImpl.bind(this);
-  quantizeToF16Interval = this.quantizeToF16IntervalNotAvailable.bind(this);
   radiansInterval = this.radiansIntervalImpl.bind(this);
   reflectInterval = this.reflectIntervalImpl.bind(this);
   refractInterval = this.refractIntervalImpl.bind(this);
@@ -5374,12 +5419,6 @@ class F16Traits extends FPTraits {
   tanhInterval = this.tanhIntervalImpl.bind(this);
   transposeInterval = this.transposeIntervalImpl.bind(this);
   truncInterval = this.truncIntervalImpl.bind(this);
-
-  /** quantizeToF16 has no f16 overload. */
-  quantizeToF16IntervalNotAvailable(n) {
-    unreachable("quantizeToF16 don't have f16 overload.");
-    return kF16UnboundedInterval;
-  }
 }
 
 export const FP = {
@@ -5388,7 +5427,7 @@ export const FP = {
   abstract: new FPAbstractTraits()
 };
 
-/** @returns the floating-point traits for @p type */
+/** @returns the floating-point traits for `type` */
 export function fpTraitsFor(type) {
   switch (type.kind) {
     case 'abstract-float':
@@ -5402,7 +5441,7 @@ export function fpTraitsFor(type) {
 
 }
 
-/** @returns true if the value @p value is representable with @p type */
+/** @returns true if the value `value` is representable with `type` */
 export function isRepresentable(value, type) {
   if (!Number.isFinite(value)) {
     return false;

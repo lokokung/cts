@@ -6,15 +6,12 @@ import { makeTestGroup } from '../common/framework/test_group.js';
 import { objectEquals, unreachable } from '../common/util/util.js';
 import { kValue } from '../webgpu/util/constants.js';
 import { FP, FPInterval, FPIntervalParam, IntervalBounds } from '../webgpu/util/floating_point.js';
+import { map2DArray, oneULPF32, oneULPF16, oneULPF64 } from '../webgpu/util/math.js';
 import {
   reinterpretU16AsF16,
   reinterpretU32AsF32,
   reinterpretU64AsF64,
-  map2DArray,
-  oneULPF32,
-  oneULPF16,
-  oneULPF64,
-} from '../webgpu/util/math.js';
+} from '../webgpu/util/reinterpret.js';
 
 import { UnitTest } from './unit_test.js';
 
@@ -2585,8 +2582,7 @@ g.test('atanInterval')
       return ulp_error * trait.oneULP(n);
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.atanInterval(t.params.input);
     t.expect(
@@ -2763,8 +2759,7 @@ g.test('cosInterval')
       return t.params.trait === 'f32' ? 2 ** -11 : 2 ** -7;
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.cosInterval(t.params.input);
     t.expect(
@@ -2944,8 +2939,7 @@ g.test('expInterval')
       return ulp_error * trait.oneULP(x);
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
     const got = trait.expInterval(t.params.input);
 
     t.expect(
@@ -3004,8 +2998,7 @@ g.test('exp2Interval')
       return ulp_error * trait.oneULP(x);
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.exp2Interval(t.params.input);
     t.expect(
@@ -3200,8 +3193,7 @@ g.test('inverseSqrtInterval')
       return 2 * trait.oneULP(n);
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.inverseSqrtInterval(t.params.input);
     t.expect(
@@ -3325,8 +3317,7 @@ g.test('logInterval')
       return 3 * trait.oneULP(n);
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.logInterval(t.params.input);
     t.expect(
@@ -3376,8 +3367,7 @@ g.test('log2Interval')
       return 3 * trait.oneULP(n);
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.log2Interval(t.params.input);
     t.expect(
@@ -3431,7 +3421,7 @@ g.test('negationInterval')
     );
   });
 
-g.test('quantizeToF16Interval_f32')
+g.test('quantizeToF16Interval')
   .paramsSubcasesOnly<ScalarToIntervalCase>(
     // prettier-ignore
     [
@@ -3723,8 +3713,7 @@ g.test('sinInterval')
       return t.params.trait === 'f32' ? 2 ** -11 : 2 ** -7;
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.sinInterval(t.params.input);
     t.expect(
@@ -3858,8 +3847,7 @@ g.test('sqrtInterval')
       return 2.5 * trait.oneULP(n);
     };
 
-    t.params.expected = applyError(t.params.expected, error);
-    const expected = trait.toInterval(t.params.expected);
+    const expected = trait.toInterval(applyError(t.params.expected, error));
 
     const got = trait.sqrtInterval(t.params.input);
     t.expect(
@@ -4432,10 +4420,9 @@ g.test('divisionInterval')
     };
 
     const [x, y] = t.params.input;
-    t.params.expected = applyError(t.params.expected, error);
 
     // Do not swizzle here, so the correct implementation under test is called.
-    const expected = FP[t.params.trait].toInterval(t.params.expected);
+    const expected = FP[t.params.trait].toInterval(applyError(t.params.expected, error));
     const got = FP[t.params.trait].divisionInterval(x, y);
     t.expect(
       objectEquals(expected, got),
