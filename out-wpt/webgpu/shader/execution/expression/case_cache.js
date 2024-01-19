@@ -3,21 +3,22 @@
 **/import { dataCache } from '../../../../common/framework/data_cache.js';import { unreachable } from '../../../../common/util/util.js';import BinaryStream from '../../../util/binary_stream.js';
 import { deserializeComparator, serializeComparator } from '../../../util/compare.js';
 import {
+  Matrix,
   Scalar,
-  Vector,
-  serializeValue,
-  deserializeValue,
-  Matrix } from
 
+  Vector,
+  deserializeValue,
+  serializeValue } from
 '../../../util/conversion.js';
 import {
-  deserializeFPInterval,
   FPInterval,
+  deserializeFPInterval,
   serializeFPInterval } from
 '../../../util/floating_point.js';
 import { flatten2DArray, unflatten2DArray } from '../../../util/math.js';
 
-import { isComparator } from './expression.js';var
+
+import { isComparator } from './expectation.js';var
 
 SerializedExpectationKind = /*#__PURE__*/function (SerializedExpectationKind) {SerializedExpectationKind[SerializedExpectationKind["Value"] = 0] = "Value";SerializedExpectationKind[SerializedExpectationKind["Interval"] = 1] = "Interval";SerializedExpectationKind[SerializedExpectationKind["Interval1DArray"] = 2] = "Interval1DArray";SerializedExpectationKind[SerializedExpectationKind["Interval2DArray"] = 3] = "Interval2DArray";SerializedExpectationKind[SerializedExpectationKind["Array"] = 4] = "Array";SerializedExpectationKind[SerializedExpectationKind["Comparator"] = 5] = "Comparator";return SerializedExpectationKind;}(SerializedExpectationKind || {});
 
@@ -137,7 +138,7 @@ export class CaseCache {
    * @param builders a Record of case-list name to case-list builder.
    */
   constructor(name, builders) {
-    this.path = `webgpu/shader/execution/case-cache/${name}.bin`;
+    this.path = `webgpu/shader/execution/${name}.bin`;
     this.builders = builders;
   }
 
