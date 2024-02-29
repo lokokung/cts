@@ -2834,7 +2834,7 @@ export class FPTraits {
       assert(this.kind === 'f32' || this.kind === 'f16');
       // asin(n) = atan2(n, sqrt(1.0 - n * n)) or a polynomial approximation with absolute error
       const x = this.sqrtInterval(this.subtractionInterval(1, this.multiplicationInterval(n, n)));
-      const approx_abs_error = this.kind === 'f32' ? 6.77e-5 : 3.91e-3;
+      const approx_abs_error = this.kind === 'f32' ? 6.81e-5 : 3.91e-3;
       return this.spanIntervals(
         this.atan2Interval(n, x),
         this.absoluteErrorInterval(Math.asin(n), approx_abs_error)
@@ -5535,6 +5535,7 @@ export function isRepresentable(value, type) {
     const constants = fpTraitsFor(type).constants();
     return value >= constants.negative.min && value <= constants.positive.max;
   }
+
   assert(false, `isRepresentable() is not yet implemented for type ${type}`);
 }
 //# sourceMappingURL=floating_point.js.map

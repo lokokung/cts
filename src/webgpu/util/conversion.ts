@@ -85,6 +85,7 @@ const workingDataI32 = new Int32Array(workingData);
 const workingDataI8 = new Int8Array(workingData);
 const workingDataF64 = new Float64Array(workingData);
 const workingDataI64 = new BigInt64Array(workingData);
+const workingDataU64 = new BigUint64Array(workingData);
 const workingDataView = new DataView(workingData);
 
 /**
@@ -685,7 +686,7 @@ export class VectorType {
   }
 
   /** Constructs a Vector of this type with the given values */
-  public create(value: number | readonly number[]): Vector {
+  public create(value: (number | bigint) | readonly (number | bigint)[]): Vector {
     if (value instanceof Array) {
       assert(value.length === this.width);
     } else {
@@ -749,6 +750,21 @@ export class MatrixType {
 
   public toString(): string {
     return `mat${this.cols}x${this.rows}<${this.elementType}>`;
+  }
+
+  /** Constructs a Matrix of this type with the given values */
+  public create(value: (number | bigint) | readonly (number | bigint)[]): Matrix {
+    if (value instanceof Array) {
+      assert(value.length === this.cols * this.rows);
+    } else {
+      value = Array(this.cols * this.rows).fill(value);
+    }
+    const columns: (number | bigint)[][] = [];
+    for (let i = 0; i < this.cols; i++) {
+      const start = i * this.rows;
+      columns.push(value.slice(start, start + this.rows));
+    }
+    return new Matrix(columns.map(c => c.map(v => this.elementType.create(v))));
   }
 }
 
@@ -1032,8 +1048,8 @@ export class Scalar {
   }
 }
 
-export interface ScalarBuilder {
-  (value: number): Scalar;
+export interface ScalarBuilder<T> {
+  (value: T): Scalar;
 }
 
 /** Create a Scalar of `type` by storing `value` as an element of `workingDataArray` and retrieving it.
@@ -1055,11 +1071,11 @@ function scalarFromValue<A extends TypedArrayBufferView>(
  * reinterpreting it as an element of `workingDataLoadArray`.
  * Both working data arrays *must* be aliases of `workingData`.
  */
-function scalarFromBits(
+function scalarFromBits<A extends TypedArrayBufferView>(
   type: ScalarType,
-  workingDataStoreArray: TypedArrayBufferView,
+  workingDataStoreArray: A,
   workingDataLoadArray: TypedArrayBufferView,
-  bits: number
+  bits: ArrayElementType<A>
 ): Scalar {
   // Clear all bits of the working data since `value` may be smaller; the upper bits should be 0.
   workingDataU32[1] = 0;
@@ -1092,6 +1108,9 @@ export const f16Bits = (bits: number): Scalar =>
 /** Create an AbstractInt from a numeric value, a JS `bigint`. */
 export const abstractInt = (value: bigint): Scalar =>
   scalarFromValue(TypeAbstractInt, workingDataI64, value);
+
+export const abstractIntBits = (bits: bigint): Scalar =>
+  scalarFromBits(TypeAbstractInt, workingDataU64, workingDataI64, bits);
 
 /** Create an i32 from a numeric value, a JS `number`. */
 export const i32 = (value: number): Scalar => scalarFromValue(TypeI32, workingDataI32, value);
@@ -1662,11 +1681,51 @@ export const kAllFloatVectors = [
   ...kAllFloatVector4,
 ] as const;
 
+/// All f16 floating-point scalar and vector types
+export const kAllF16ScalarsAndVectors = [
+  TypeF16,
+  TypeVec(2, TypeF16),
+  TypeVec(3, TypeF16),
+  TypeVec(4, TypeF16),
+] as const;
+
 /// All floating-point scalar and vector types
 export const kAllFloatScalarsAndVectors = [...kAllFloatScalars, ...kAllFloatVectors] as const;
 
-/// All integer scalar and vector types
-export const kAllIntegerScalarsAndVectors = [
+/// Abstract integer scalar type
+export const kAbstractIntegerScalar = [TypeAbstractInt] as const;
+
+/// Abstract integer vec2 type
+export const kAbstractIntegerVector2 = [TypeVec(2, TypeAbstractInt)] as const;
+
+/// Abstract integer vec3 type
+export const kAbstractIntegerVector3 = [TypeVec(3, TypeAbstractInt)] as const;
+
+/// Abstract integer vec4 type
+export const kAbstractIntegerVector4 = [TypeVec(4, TypeAbstractInt)] as const;
+
+/// All abstract integer scalar vector types
+export const kAbstractIntegerVectors = [
+  ...kAbstractIntegerVector2,
+  ...kAbstractIntegerVector3,
+  ...kAbstractIntegerVector4,
+] as const;
+
+/// Abstract integer scalar and vector types
+export const kAllAbstractIntegerScalarAndVectors = [
+  ...kAbstractIntegerScalar,
+  ...kAbstractIntegerVectors,
+] as const;
+
+// Abstract and concrete integer types are not grouped into an 'all' type,
+// because for many validation tests there is a valid conversion of
+// AbstractInt -> AbstractFloat, but not one for the concrete integers. Thus, an
+// AbstractInt literal will be a potentially valid input, whereas the concrete
+// integers will not be. For many tests the pattern is to have separate fixtures
+// for the things that might be valid and those that are never valid.
+
+/// All concrete integer scalar and vector types
+export const kAllConcreteIntegerScalarsAndVectors = [
   TypeI32,
   TypeVec(2, TypeI32),
   TypeVec(3, TypeI32),
@@ -1694,9 +1753,9 @@ export const kAllUnsignedIntegerScalarsAndVectors = [
 ] as const;
 
 /// All floating-point and integer scalar and vector types
-export const kAllFloatAndIntegerScalarsAndVectors = [
+export const kAllFloatAndConcreteIntegerScalarsAndVectors = [
   ...kAllFloatScalarsAndVectors,
-  ...kAllIntegerScalarsAndVectors,
+  ...kAllConcreteIntegerScalarsAndVectors,
 ] as const;
 
 /// All floating-point and signed integer scalar and vector types
