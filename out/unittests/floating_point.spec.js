@@ -1835,25 +1835,28 @@ fn((t) => {
 // but 1.0 +/- x is still exactly representable.
 const kSmallAbsoluteErrorValue = {
   f32: 2 ** -11, // Builtin cos and sin has a absolute error 2**-11 for f32
-  f16: 2 ** -7 // Builtin cos and sin has a absolute error 2**-7 for f16
+  f16: 2 ** -7, // Builtin cos and sin has a absolute error 2**-7 for f16
+  abstract: 2 ** -11 // Builtin cos and sin has a absolute error 2**-11 for AbstractFloat
 };
 // A large absolute error value is a representable value x that much smaller than maximum
 // positive, but positive.max - x is still exactly representable.
 const kLargeAbsoluteErrorValue = {
   f32: 2 ** 110, // f32.positive.max - 2**110 = 3.4028104e+38 = 0x7f7fffbf in f32
-  f16: 2 ** 10 // f16.positive.max - 2**10 = 64480 = 0x7bdf in f16
+  f16: 2 ** 10, // f16.positive.max - 2**10 = 64480 = 0x7bdf in f16
+  abstract: 2 ** 977 // f64.positive.man - 2**977 = 1.79769e+308 = 0x7fefffffffffffbf in f64
 };
 // A subnormal absolute error value is a subnormal representable value x of kind, which ensures
 // that positive.subnormal.min +/- x is still exactly representable.
 const kSubnormalAbsoluteErrorValue = {
   f32: 2 ** -140, // f32 0x00000200
-  f16: 2 ** -20 // f16 0x0010
+  f16: 2 ** -20, // f16 0x0010
+  abstract: 2 ** -1065 // f64 0x0000_0000_0000_0200
 };
 
 g.test('absoluteErrorInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 expandWithParams((p) => {
   const trait = FP[p.trait];
@@ -1861,6 +1864,27 @@ expandWithParams((p) => {
   const smallErr = kSmallAbsoluteErrorValue[p.trait];
   const largeErr = kLargeAbsoluteErrorValue[p.trait];
   const subnormalErr = kSubnormalAbsoluteErrorValue[p.trait];
+
+  // Additional testing for non-f64 values, since JS number is f64 internally
+
+  const additionalSubnormal64bit = p.trait !== 'abstract' ?
+  [
+  // 64-bit subnormals, expected to be treated as 0.0 or smallest subnormal of kind.
+  { value: reinterpretU64AsF64(0x0000_0000_0000_0001n), error: 0, expected: [0, constants.positive.subnormal.min] },
+  { value: reinterpretU64AsF64(0x0000_0000_0000_0001n), error: subnormalErr, expected: [-subnormalErr, constants.positive.subnormal.min + subnormalErr] },
+  // Note that f32 minimum subnormal is so smaller than 1.0, adding them together may result in the f64 results 1.0.
+  { value: reinterpretU64AsF64(0x0000_0000_0000_0001n), error: 1, expected: [-1, constants.positive.subnormal.min + 1] },
+  { value: reinterpretU64AsF64(0x0000_0000_0000_0002n), error: 0, expected: [0, constants.positive.subnormal.min] },
+  { value: reinterpretU64AsF64(0x0000_0000_0000_0002n), error: subnormalErr, expected: [-subnormalErr, constants.positive.subnormal.min + subnormalErr] },
+  { value: reinterpretU64AsF64(0x0000_0000_0000_0002n), error: 1, expected: [-1, constants.positive.subnormal.min + 1] },
+  { value: reinterpretU64AsF64(0x800f_ffff_ffff_ffffn), error: 0, expected: [constants.negative.subnormal.max, 0] },
+  { value: reinterpretU64AsF64(0x800f_ffff_ffff_ffffn), error: subnormalErr, expected: [constants.negative.subnormal.max - subnormalErr, subnormalErr] },
+  { value: reinterpretU64AsF64(0x800f_ffff_ffff_ffffn), error: 1, expected: [constants.negative.subnormal.max - 1, 1] },
+  { value: reinterpretU64AsF64(0x800f_ffff_ffff_fffen), error: 0, expected: [constants.negative.subnormal.max, 0] },
+  { value: reinterpretU64AsF64(0x800f_ffff_ffff_fffen), error: subnormalErr, expected: [constants.negative.subnormal.max - subnormalErr, subnormalErr] },
+  { value: reinterpretU64AsF64(0x800f_ffff_ffff_fffen), error: 1, expected: [constants.negative.subnormal.max - 1, 1] }] :
+  [];
+
 
   return [
   // Edge Cases
@@ -1903,21 +1927,6 @@ expandWithParams((p) => {
   { value: constants.negative.subnormal.max, error: smallErr, expected: [constants.negative.subnormal.max - smallErr, smallErr] },
   { value: constants.negative.subnormal.max, error: 1, expected: [constants.negative.subnormal.max - 1, 1] },
 
-  // 64-bit subnormals, expected to be treated as 0.0 or smallest subnormal of kind.
-  { value: reinterpretU64AsF64(0x0000_0000_0000_0001n), error: 0, expected: [0, constants.positive.subnormal.min] },
-  { value: reinterpretU64AsF64(0x0000_0000_0000_0001n), error: subnormalErr, expected: [-subnormalErr, constants.positive.subnormal.min + subnormalErr] },
-  // Note that f32 minimum subnormal is so smaller than 1.0, adding them together may result in the f64 results 1.0.
-  { value: reinterpretU64AsF64(0x0000_0000_0000_0001n), error: 1, expected: [-1, constants.positive.subnormal.min + 1] },
-  { value: reinterpretU64AsF64(0x0000_0000_0000_0002n), error: 0, expected: [0, constants.positive.subnormal.min] },
-  { value: reinterpretU64AsF64(0x0000_0000_0000_0002n), error: subnormalErr, expected: [-subnormalErr, constants.positive.subnormal.min + subnormalErr] },
-  { value: reinterpretU64AsF64(0x0000_0000_0000_0002n), error: 1, expected: [-1, constants.positive.subnormal.min + 1] },
-  { value: reinterpretU64AsF64(0x800f_ffff_ffff_ffffn), error: 0, expected: [constants.negative.subnormal.max, 0] },
-  { value: reinterpretU64AsF64(0x800f_ffff_ffff_ffffn), error: subnormalErr, expected: [constants.negative.subnormal.max - subnormalErr, subnormalErr] },
-  { value: reinterpretU64AsF64(0x800f_ffff_ffff_ffffn), error: 1, expected: [constants.negative.subnormal.max - 1, 1] },
-  { value: reinterpretU64AsF64(0x800f_ffff_ffff_fffen), error: 0, expected: [constants.negative.subnormal.max, 0] },
-  { value: reinterpretU64AsF64(0x800f_ffff_ffff_fffen), error: subnormalErr, expected: [constants.negative.subnormal.max - subnormalErr, subnormalErr] },
-  { value: reinterpretU64AsF64(0x800f_ffff_ffff_fffen), error: 1, expected: [constants.negative.subnormal.max - 1, 1] },
-
   // Zero
   { value: 0, error: 0, expected: 0 },
   { value: 0, error: smallErr, expected: [-smallErr, smallErr] },
@@ -1929,7 +1938,9 @@ expandWithParams((p) => {
   { value: 2, error: 1, expected: [1, 3] },
   { value: -2, error: 0, expected: -2 },
   { value: -2, error: smallErr, expected: [-2 - smallErr, -2 + smallErr] },
-  { value: -2, error: 1, expected: [-3, -1] }];
+  { value: -2, error: 1, expected: [-3, -1] },
+
+  ...additionalSubnormal64bit];
 
 })
 ).
@@ -2656,13 +2667,18 @@ const kCeilIntervalCases = {
   { input: 2 ** 14, expected: 2 ** 14 },
   { input: -(2 ** 14), expected: -(2 ** 14) },
   { input: 0x8000, expected: 0x8000 } // https://github.com/gpuweb/cts/issues/2766
+  ],
+  abstract: [
+  { input: 2 ** 52, expected: 2 ** 52 },
+  { input: -(2 ** 52), expected: -(2 ** 52) },
+  { input: 0x8000000000000000, expected: 0x8000000000000000 } // https://github.com/gpuweb/cts/issues/2766
   ]
 };
 
 g.test('ceilInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 expandWithParams((p) => {
   const constants = FP[p.trait].constants();
@@ -2689,7 +2705,7 @@ expandWithParams((p) => {
   { input: constants.negative.max, expected: 0 },
   ...kCeilIntervalCases[p.trait],
 
-  // 32-bit subnormals
+  // Subnormals
   { input: constants.positive.subnormal.max, expected: [0, 1] },
   { input: constants.positive.subnormal.min, expected: [0, 1] },
   { input: constants.negative.subnormal.min, expected: 0 },
@@ -6125,14 +6141,19 @@ const kDotIntervalCases = {
   // overflow f16 and result in unbounded endpoints.
   // https://github.com/gpuweb/cts/issues/2155
   { input: [[kValue.f16.positive.max, 1.0, 2.0, 3.0], [-1.0, kValue.f16.positive.max, -2.0, -3.0]], expected: kUnboundedEndpoints },
-  { input: [[kValue.f16.positive.max, 1.0, 2.0, 3.0], [1.0, kValue.f16.negative.min, 2.0, 3.0]], expected: kUnboundedEndpoints }]
+  { input: [[kValue.f16.positive.max, 1.0, 2.0, 3.0], [1.0, kValue.f16.negative.min, 2.0, 3.0]], expected: kUnboundedEndpoints }],
+
+  abstract: [
+  // See f32 for details
+  { input: [[kValue.f64.positive.max, 1.0, 2.0, 3.0], [-1.0, kValue.f64.positive.max, -2.0, -3.0]], expected: [-13, 0] },
+  { input: [[kValue.f64.positive.max, 1.0, 2.0, 3.0], [1.0, kValue.f64.negative.min, 2.0, 3.0]], expected: [0, 13] }]
 
 };
 
 g.test('dotInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 expandWithParams((p) => {
   const trait = FP[p.trait];
@@ -6145,7 +6166,7 @@ expandWithParams((p) => {
   { input: [[1.0, 1.0], [1.0, 1.0]], expected: 2.0 },
   { input: [[-1.0, -1.0], [-1.0, -1.0]], expected: 2.0 },
   { input: [[-1.0, 1.0], [1.0, -1.0]], expected: -2.0 },
-  { input: [[0.1, 0.0], [1.0, 0.0]], expected: kConstantCorrectlyRoundedExpectation[p.trait]['0.1'] }, // correclt rounded of 0.1
+  { input: [[0.1, 0.0], [1.0, 0.0]], expected: kConstantCorrectlyRoundedExpectation[p.trait]['0.1'] }, // correctly rounded of 0.1
 
   // vec3
   { input: [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], expected: 1.0 },
@@ -6154,7 +6175,7 @@ expandWithParams((p) => {
   { input: [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]], expected: 3.0 },
   { input: [[-1.0, -1.0, -1.0], [-1.0, -1.0, -1.0]], expected: 3.0 },
   { input: [[1.0, -1.0, -1.0], [-1.0, 1.0, -1.0]], expected: -1.0 },
-  { input: [[0.1, 0.0, 0.0], [1.0, 0.0, 0.0]], expected: kConstantCorrectlyRoundedExpectation[p.trait]['0.1'] }, // correclt rounded of 0.1
+  { input: [[0.1, 0.0, 0.0], [1.0, 0.0, 0.0]], expected: kConstantCorrectlyRoundedExpectation[p.trait]['0.1'] }, // correctly rounded of 0.1
 
   // vec4
   { input: [[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]], expected: 1.0 },
@@ -6483,7 +6504,7 @@ fn((t) => {
 g.test('determinantInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 combineWithParams([
 // Extreme values, i.e. subnormals, very large magnitudes, and those lead to
@@ -7188,7 +7209,7 @@ fn((t) => {
 g.test('multiplicationMatrixMatrixInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 combineWithParams([
 // Only testing that different shapes of matrices are handled correctly
@@ -7761,6 +7782,20 @@ const kMultiplicationMatrixScalarIntervalCases = {
     [[0, reinterpretU16AsF16(0x43fe)], 0], // [[0, 3.99609375], 0]
     [0, 0]]
 
+  }],
+
+  abstract: [
+  // From https://github.com/gpuweb/cts/issues/3044
+  {
+    matrix: [
+    [kValue.f64.negative.min, 0],
+    [0, 0]],
+
+    scalar: kValue.f64.negative.subnormal.min,
+    expected: [
+    [[0, reinterpretU64AsF64(0x400ffffffffffffdn)], 0], // [[0, 3.9999995...], 0],
+    [0, 0]]
+
   }]
 
 };
@@ -7768,7 +7803,7 @@ const kMultiplicationMatrixScalarIntervalCases = {
 g.test('multiplicationMatrixScalarInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 expandWithParams((p) => {
   const trait = FP[p.trait];
@@ -7940,7 +7975,7 @@ fn((t) => {
 g.test('multiplicationMatrixVectorInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 combineWithParams([
 // Only testing that different shapes of matrices are handled correctly
@@ -8057,7 +8092,7 @@ fn((t) => {
 g.test('multiplicationVectorMatrixInterval').
 params((u) =>
 u.
-combine('trait', ['f32', 'f16']).
+combine('trait', ['f32', 'f16', 'abstract']).
 beginSubcases().
 combineWithParams([
 // Only testing that different shapes of matrices are handled correctly
@@ -8065,8 +8100,8 @@ combineWithParams([
 // multiplicationVectorMatrixInterval uses DotIntervalOp for calculating
 // intervals, so the testing for dotInterval covers the actual interval
 // calculations.
-// Keep all expected result integer no larger than 2047 to ensure that all result is exactly
-// represeantable in both f32 and f16.
+// Keep all expected result integer no larger than 2047 to ensure that
+// all result is exactly representable in both f32 and f16.
 {
   vector: [1, 2],
   matrix: [

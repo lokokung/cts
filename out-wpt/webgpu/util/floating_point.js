@@ -1073,7 +1073,7 @@ export class FPTraits {
 
   /** @returns 1 * ULP: (number) */
 
-  /** @returns a builder for converting numbers to Scalars */
+  /** @returns a builder for converting numbers to ScalarsValues */
 
   /** @returns a range of scalars for testing */
 
@@ -5091,7 +5091,7 @@ class FPAbstractTraits extends FPTraits {
   sparseMatrixRange = sparseMatrixF64Range;
 
   // Framework - Fundamental Error Intervals - Overrides
-  absoluteErrorInterval = this.unboundedAbsoluteErrorInterval.bind(this);
+  absoluteErrorInterval = this.absoluteErrorIntervalImpl.bind(this);
   correctlyRoundedInterval = this.correctlyRoundedIntervalImpl.bind(this);
   correctlyRoundedMatrix = this.correctlyRoundedMatrixImpl.bind(this);
   ulpInterval = (n, numULP) => {
@@ -5120,7 +5120,7 @@ class FPAbstractTraits extends FPTraits {
     'atan2Interval'
   );
   atanhInterval = this.unimplementedScalarToInterval.bind(this, 'atanhInterval');
-  ceilInterval = this.unimplementedScalarToInterval.bind(this, 'ceilInterval');
+  ceilInterval = this.ceilIntervalImpl.bind(this);
   clampMedianInterval = this.clampMedianIntervalImpl.bind(this);
   clampMinMaxInterval = this.clampMinMaxIntervalImpl.bind(this);
   clampIntervals = [this.clampMedianInterval, this.clampMinMaxInterval];
@@ -5128,10 +5128,7 @@ class FPAbstractTraits extends FPTraits {
   coshInterval = this.unimplementedScalarToInterval.bind(this, 'coshInterval');
   crossInterval = this.crossIntervalImpl.bind(this);
   degreesInterval = this.degreesIntervalImpl.bind(this);
-  determinantInterval = this.unimplementedMatrixToInterval.bind(
-    this,
-    'determinantInterval'
-  );
+  determinantInterval = this.determinantIntervalImpl.bind(this);
   distanceInterval = this.unimplementedDistance.bind(this);
   divisionInterval = (
   x,
@@ -5139,7 +5136,7 @@ class FPAbstractTraits extends FPTraits {
   {
     return this.toInterval(kF32Traits.divisionInterval(x, y));
   };
-  dotInterval = this.unimplementedVectorPairToInterval.bind(this, 'dotInterval');
+  dotInterval = this.dotIntervalImpl.bind(this);
   expInterval = this.unimplementedScalarToInterval.bind(this, 'expInterval');
   exp2Interval = this.unimplementedScalarToInterval.bind(this, 'exp2Interval');
   faceForwardIntervals = this.unimplementedFaceForward.bind(this);
@@ -5164,26 +5161,16 @@ class FPAbstractTraits extends FPTraits {
   mixIntervals = [this.mixImpreciseInterval, this.mixPreciseInterval];
   modfInterval = this.modfIntervalImpl.bind(this);
   multiplicationInterval = this.multiplicationIntervalImpl.bind(this);
-  multiplicationMatrixMatrixInterval = this.unimplementedMatrixPairToMatrix.bind(
-    this,
-    'multiplicationMatrixMatrixInterval'
-  );
-  multiplicationMatrixScalarInterval = this.unimplementedMatrixScalarToMatrix.bind(
-    this,
-    'multiplicationMatrixScalarInterval'
-  );
-  multiplicationScalarMatrixInterval = this.unimplementedScalarMatrixToMatrix.bind(
-    this,
-    'multiplicationScalarMatrixInterval'
-  );
-  multiplicationMatrixVectorInterval = this.unimplementedMatrixVectorToVector.bind(
-    this,
-    'multiplicationMatrixVectorInterval'
-  );
-  multiplicationVectorMatrixInterval = this.unimplementedVectorMatrixToVector.bind(
-    this,
-    'multiplicationVectorMatrixInterval'
-  );
+  multiplicationMatrixMatrixInterval =
+  this.multiplicationMatrixMatrixIntervalImpl.bind(this);
+  multiplicationMatrixScalarInterval =
+  this.multiplicationMatrixScalarIntervalImpl.bind(this);
+  multiplicationScalarMatrixInterval =
+  this.multiplicationScalarMatrixIntervalImpl.bind(this);
+  multiplicationMatrixVectorInterval =
+  this.multiplicationMatrixVectorIntervalImpl.bind(this);
+  multiplicationVectorMatrixInterval =
+  this.multiplicationVectorMatrixIntervalImpl.bind(this);
   negationInterval = this.negationIntervalImpl.bind(this);
   normalizeInterval = this.unimplementedVectorToVector.bind(
     this,

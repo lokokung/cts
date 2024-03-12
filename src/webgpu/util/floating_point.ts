@@ -12,7 +12,7 @@ import {
   f16,
   f32,
   isFloatType,
-  Scalar,
+  ScalarValue,
   ScalarType,
   toMatrix,
   toVector,
@@ -1073,8 +1073,8 @@ export abstract class FPTraits {
   public abstract readonly flushSubnormal: (n: number) => number;
   /** @returns 1 * ULP: (number) */
   public abstract readonly oneULP: (target: number, mode?: FlushMode) => number;
-  /** @returns a builder for converting numbers to Scalars */
-  public abstract readonly scalarBuilder: (n: number) => Scalar;
+  /** @returns a builder for converting numbers to ScalarsValues */
+  public abstract readonly scalarBuilder: (n: number) => ScalarValue;
   /** @returns a range of scalars for testing */
   public abstract scalarRange(): readonly number[];
   /** @returns a reduced range of scalars for testing */
@@ -5091,7 +5091,7 @@ class FPAbstractTraits extends FPTraits {
   public readonly sparseMatrixRange = sparseMatrixF64Range;
 
   // Framework - Fundamental Error Intervals - Overrides
-  public readonly absoluteErrorInterval = this.unboundedAbsoluteErrorInterval.bind(this);
+  public readonly absoluteErrorInterval = this.absoluteErrorIntervalImpl.bind(this);
   public readonly correctlyRoundedInterval = this.correctlyRoundedIntervalImpl.bind(this);
   public readonly correctlyRoundedMatrix = this.correctlyRoundedMatrixImpl.bind(this);
   public readonly ulpInterval = (n: number, numULP: number): FPInterval => {
@@ -5120,7 +5120,7 @@ class FPAbstractTraits extends FPTraits {
     'atan2Interval'
   );
   public readonly atanhInterval = this.unimplementedScalarToInterval.bind(this, 'atanhInterval');
-  public readonly ceilInterval = this.unimplementedScalarToInterval.bind(this, 'ceilInterval');
+  public readonly ceilInterval = this.ceilIntervalImpl.bind(this);
   public readonly clampMedianInterval = this.clampMedianIntervalImpl.bind(this);
   public readonly clampMinMaxInterval = this.clampMinMaxIntervalImpl.bind(this);
   public readonly clampIntervals = [this.clampMedianInterval, this.clampMinMaxInterval];
@@ -5128,10 +5128,7 @@ class FPAbstractTraits extends FPTraits {
   public readonly coshInterval = this.unimplementedScalarToInterval.bind(this, 'coshInterval');
   public readonly crossInterval = this.crossIntervalImpl.bind(this);
   public readonly degreesInterval = this.degreesIntervalImpl.bind(this);
-  public readonly determinantInterval = this.unimplementedMatrixToInterval.bind(
-    this,
-    'determinantInterval'
-  );
+  public readonly determinantInterval = this.determinantIntervalImpl.bind(this);
   public readonly distanceInterval = this.unimplementedDistance.bind(this);
   public readonly divisionInterval = (
     x: number | FPInterval,
@@ -5139,7 +5136,7 @@ class FPAbstractTraits extends FPTraits {
   ): FPInterval => {
     return this.toInterval(kF32Traits.divisionInterval(x, y));
   };
-  public readonly dotInterval = this.unimplementedVectorPairToInterval.bind(this, 'dotInterval');
+  public readonly dotInterval = this.dotIntervalImpl.bind(this);
   public readonly expInterval = this.unimplementedScalarToInterval.bind(this, 'expInterval');
   public readonly exp2Interval = this.unimplementedScalarToInterval.bind(this, 'exp2Interval');
   public readonly faceForwardIntervals = this.unimplementedFaceForward.bind(this);
@@ -5164,26 +5161,16 @@ class FPAbstractTraits extends FPTraits {
   public readonly mixIntervals = [this.mixImpreciseInterval, this.mixPreciseInterval];
   public readonly modfInterval = this.modfIntervalImpl.bind(this);
   public readonly multiplicationInterval = this.multiplicationIntervalImpl.bind(this);
-  public readonly multiplicationMatrixMatrixInterval = this.unimplementedMatrixPairToMatrix.bind(
-    this,
-    'multiplicationMatrixMatrixInterval'
-  );
-  public readonly multiplicationMatrixScalarInterval = this.unimplementedMatrixScalarToMatrix.bind(
-    this,
-    'multiplicationMatrixScalarInterval'
-  );
-  public readonly multiplicationScalarMatrixInterval = this.unimplementedScalarMatrixToMatrix.bind(
-    this,
-    'multiplicationScalarMatrixInterval'
-  );
-  public readonly multiplicationMatrixVectorInterval = this.unimplementedMatrixVectorToVector.bind(
-    this,
-    'multiplicationMatrixVectorInterval'
-  );
-  public readonly multiplicationVectorMatrixInterval = this.unimplementedVectorMatrixToVector.bind(
-    this,
-    'multiplicationVectorMatrixInterval'
-  );
+  public readonly multiplicationMatrixMatrixInterval =
+    this.multiplicationMatrixMatrixIntervalImpl.bind(this);
+  public readonly multiplicationMatrixScalarInterval =
+    this.multiplicationMatrixScalarIntervalImpl.bind(this);
+  public readonly multiplicationScalarMatrixInterval =
+    this.multiplicationScalarMatrixIntervalImpl.bind(this);
+  public readonly multiplicationMatrixVectorInterval =
+    this.multiplicationMatrixVectorIntervalImpl.bind(this);
+  public readonly multiplicationVectorMatrixInterval =
+    this.multiplicationVectorMatrixIntervalImpl.bind(this);
   public readonly negationInterval = this.negationIntervalImpl.bind(this);
   public readonly normalizeInterval = this.unimplementedVectorToVector.bind(
     this,
