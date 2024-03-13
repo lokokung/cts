@@ -13,7 +13,8 @@ import {
   VectorValue,
   isAbstractType,
   scalarTypeOf,
-  ArrayType } from
+  ArrayType,
+  elementTypeOf } from
 '../../../util/conversion.js';
 import { align } from '../../../util/math.js';
 
@@ -157,7 +158,10 @@ function wgslMembers(members, source, memberName) {
   });
   const padding = layout.stride - layout.size;
   if (padding > 0) {
-    lines.push(`  @size(${padding}) padding : i32,`);
+    // Pad with a 'f16' if the padding requires an odd multiple of 2 bytes.
+    // This is required as 'i32' has an alignment and size of 4 bytes.
+    const ty = (padding & 2) !== 0 ? 'f16' : 'i32';
+    lines.push(`  @size(${padding}) padding : ${ty},`);
   }
   return lines.join('\n');
 }
@@ -618,7 +622,7 @@ inputSource)
     // Constant eval
     //////////////////////////////////////////////////////////////////////////
     let body = '';
-    if (parameterTypes.some(isAbstractType)) {
+    if (parameterTypes.some((ty) => isAbstractType(elementTypeOf(ty)))) {
       // Directly assign the expression to the output, to avoid an
       // intermediate store, which will concretize the value early
       body = cases.

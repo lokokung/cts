@@ -4281,6 +4281,16 @@ export const listing = [
       "expression",
       "call",
       "builtin",
+      "textureSample"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
       "unpack4xI8"
     ]
   },
@@ -4673,6 +4683,14 @@ export const listing = [
       "validation",
       "types",
       "struct"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "types",
+      "textures"
     ]
   },
   {
