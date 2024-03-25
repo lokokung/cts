@@ -389,6 +389,14 @@ export const listing = [
       "api",
       "operation",
       "rendering",
+      "3d_texture_slices"
+    ]
+  },
+  {
+    "file": [
+      "api",
+      "operation",
+      "rendering",
       "basic"
     ]
   },
@@ -3758,6 +3766,14 @@ export const listing = [
       "shader",
       "execution",
       "statement",
+      "discard"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "execution",
+      "statement",
       "increment_decrement"
     ]
   },
@@ -3811,6 +3827,14 @@ export const listing = [
       "shader",
       "validation",
       "decl",
+      "let"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "decl",
       "override"
     ]
   },
@@ -3845,6 +3869,15 @@ export const listing = [
       "expression",
       "access",
       "vector"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "binary",
+      "add_sub_mul"
     ]
   },
   {
@@ -4061,6 +4094,16 @@ export const listing = [
       "expression",
       "call",
       "builtin",
+      "determinant"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
       "dot4I8Packed"
     ]
   },
@@ -4151,7 +4194,37 @@ export const listing = [
       "expression",
       "call",
       "builtin",
+      "max"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "min"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
       "modf"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "normalize"
     ]
   },
   {
@@ -4281,7 +4354,87 @@ export const listing = [
       "expression",
       "call",
       "builtin",
+      "textureLoad"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
       "textureSample"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "textureSampleBaseClampToEdge"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "textureSampleBias"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "textureSampleCompare"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "textureSampleCompareLevel"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "textureSampleGrad"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "textureSampleLevel"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "textureStore"
     ]
   },
   {
@@ -4321,6 +4474,15 @@ export const listing = [
       "expression",
       "unary",
       "address_of_and_indirection"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "unary",
+      "arithmetic_negation"
     ]
   },
   {
@@ -4554,6 +4716,14 @@ export const listing = [
       "shader",
       "validation",
       "parse",
+      "statement_behavior"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "parse",
       "unary_ops"
     ]
   },
@@ -4674,7 +4844,23 @@ export const listing = [
       "shader",
       "validation",
       "types",
+      "array"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "types",
       "atomics"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "types",
+      "matrix"
     ]
   },
   {

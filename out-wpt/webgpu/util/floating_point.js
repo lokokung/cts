@@ -668,6 +668,7 @@ function addFlushedIfNeededF16(values) {
 
 
 
+
 /** A representation of an FPInterval for a case param */
 
 
@@ -1713,7 +1714,6 @@ export class FPTraits {
   {
     param0 = map2DArray(param0, this.quantize);
     param1 = map2DArray(param1, this.quantize);
-
     const results = ops.map((o) => o(param0, param1));
     if (filter === 'finite' && results.some((m) => m.some((c) => c.some((r) => !r.isFinite())))) {
       return undefined;
@@ -2527,9 +2527,10 @@ export class FPTraits {
   runMatrixToMatrixOp(m, op) {
     const num_cols = m.length;
     const num_rows = m[0].length;
-    if (m.some((c) => c.some((r) => !r.isFinite()))) {
-      return this.constants().unboundedMatrix[num_cols][num_rows];
-    }
+
+    // Do not check for OOB inputs and exit early here, because the shape of
+    // the output matrix may be determined by the operation being run,
+    // i.e. transpose.
 
     const m_flat = flatten2DArray(m);
     const m_values = cartesianProduct(
@@ -3411,7 +3412,10 @@ export class FPTraits {
   x,
   y)
   {
-    assert(x.length === y.length, `dot not defined for vectors with different lengths`);
+    assert(
+      x.length === y.length,
+      `dot not defined for vectors with different lengths, x = ${x}, y = ${y}`
+    );
     return this.runVectorPairToIntervalOp(this.toVector(x), this.toVector(y), this.DotIntervalOp);
   }
 
@@ -3599,11 +3603,9 @@ export class FPTraits {
 
   LdexpIntervalOp = {
     impl: (e1, e2) => {
-      assert(this.kind === 'f32' || this.kind === 'f16');
       assert(Number.isInteger(e2), 'the second param of ldexp must be an integer');
-      const bias = this.kind === 'f32' ? 127 : 15;
       // Spec explicitly calls indeterminate value if e2 > bias + 1
-      if (e2 > bias + 1) {
+      if (e2 > this.constants().bias + 1) {
         return this.constants().unboundedInterval;
       }
       // The spec says the result of ldexp(e1, e2) = e1 * 2 ^ e2, and the
@@ -3613,7 +3615,7 @@ export class FPTraits {
       // correctlyRoundedInterval.
       const result = e1 * 2 ** e2;
       if (!Number.isFinite(result)) {
-        // Overflowed TS's number type, so definitely out of bounds for f32/f16
+        // Overflowed TS's number type, so definitely out of bounds
         return this.constants().unboundedInterval;
       }
       // The result may be zero if e2 + bias <= 0, but we can't simply span the interval to 0.0.
@@ -4459,6 +4461,7 @@ class F32Traits extends FPTraits {
         sixth: kValue.f32.negative.pi.sixth
       }
     },
+    bias: 127,
     unboundedInterval: kF32UnboundedInterval,
     zeroInterval: kF32ZeroInterval,
     // Have to use the constants.ts values here, because values defined in the
@@ -4926,6 +4929,7 @@ class FPAbstractTraits extends FPTraits {
         sixth: kValue.f64.negative.pi.sixth
       }
     },
+    bias: 1023,
     unboundedInterval: kAbstractUnboundedInterval,
     zeroInterval: kAbstractZeroInterval,
     // Have to use the constants.ts values here, because values defined in the
@@ -5124,66 +5128,80 @@ class FPAbstractTraits extends FPTraits {
   clampIntervals = [this.clampMedianInterval, this.clampMinMaxInterval];
   cosInterval = this.unimplementedScalarToInterval.bind(this, 'cosInterval');
   coshInterval = this.unimplementedScalarToInterval.bind(this, 'coshInterval');
-  crossInterval = this.crossIntervalImpl.bind(this);
-  degreesInterval = this.degreesIntervalImpl.bind(this);
-  determinantInterval = this.determinantIntervalImpl.bind(this);
+  crossInterval = this.unimplementedVectorPairToVector.bind(this, 'crossInterval');
+  degreesInterval = this.unimplementedScalarToInterval.bind(
+    this,
+    'degreesInterval'
+  );
+  determinantInterval = this.unimplementedMatrixToInterval.bind(
+    this,
+    'determinant'
+  );
   distanceInterval = this.unimplementedDistance.bind(this);
-  divisionInterval = (
-  x,
-  y) =>
-  {
-    return this.toInterval(kF32Traits.divisionInterval(x, y));
-  };
-  dotInterval = this.dotIntervalImpl.bind(this);
+  divisionInterval = this.unimplementedScalarPairToInterval.bind(
+    this,
+    'divisionInterval'
+  );
+  dotInterval = this.unimplementedVectorPairToInterval.bind(this, 'dotInterval');
   expInterval = this.unimplementedScalarToInterval.bind(this, 'expInterval');
   exp2Interval = this.unimplementedScalarToInterval.bind(this, 'exp2Interval');
   faceForwardIntervals = this.unimplementedFaceForward.bind(this);
   floorInterval = this.floorIntervalImpl.bind(this);
-  fmaInterval = this.fmaIntervalImpl.bind(this);
-  fractInterval = this.unimplementedScalarToInterval.bind(this, 'fractInterval');
+  fmaInterval = this.unimplementedScalarTripleToInterval.bind(this, 'fmaInterval');
+  fractInterval = this.fractIntervalImpl.bind(this);
   inverseSqrtInterval = this.unimplementedScalarToInterval.bind(
     this,
     'inverseSqrtInterval'
   );
-  ldexpInterval = this.unimplementedScalarPairToInterval.bind(
-    this,
-    'ldexpInterval'
-  );
+  ldexpInterval = this.ldexpIntervalImpl.bind(this);
   lengthInterval = this.unimplementedLength.bind(this);
   logInterval = this.unimplementedScalarToInterval.bind(this, 'logInterval');
   log2Interval = this.unimplementedScalarToInterval.bind(this, 'log2Interval');
   maxInterval = this.maxIntervalImpl.bind(this);
   minInterval = this.minIntervalImpl.bind(this);
-  mixImpreciseInterval = this.mixImpreciseIntervalImpl.bind(this);
-  mixPreciseInterval = this.mixPreciseIntervalImpl.bind(this);
+  mixImpreciseInterval = this.unimplementedScalarTripleToInterval.bind(
+    this,
+    'mixImpreciseInterval'
+  );
+  mixPreciseInterval = this.unimplementedScalarTripleToInterval.bind(
+    this,
+    'mixPreciseInterval'
+  );
   mixIntervals = [this.mixImpreciseInterval, this.mixPreciseInterval];
   modfInterval = this.modfIntervalImpl.bind(this);
   multiplicationInterval = this.multiplicationIntervalImpl.bind(this);
-  multiplicationMatrixMatrixInterval =
-  this.multiplicationMatrixMatrixIntervalImpl.bind(this);
+  multiplicationMatrixMatrixInterval = this.unimplementedMatrixPairToMatrix.bind(
+    this,
+    'multiplicationMatrixMatrixInterval'
+  );
   multiplicationMatrixScalarInterval =
   this.multiplicationMatrixScalarIntervalImpl.bind(this);
   multiplicationScalarMatrixInterval =
   this.multiplicationScalarMatrixIntervalImpl.bind(this);
-  multiplicationMatrixVectorInterval =
-  this.multiplicationMatrixVectorIntervalImpl.bind(this);
-  multiplicationVectorMatrixInterval =
-  this.multiplicationVectorMatrixIntervalImpl.bind(this);
+  multiplicationMatrixVectorInterval = this.unimplementedMatrixVectorToVector.bind(
+    this,
+    'multiplicationMatrixVectorInterval'
+  );
+  multiplicationVectorMatrixInterval = this.unimplementedVectorMatrixToVector.bind(
+    this,
+    'multiplicationVectorMatrixInterval'
+  );
   negationInterval = this.negationIntervalImpl.bind(this);
   normalizeInterval = this.unimplementedVectorToVector.bind(
     this,
     'normalizeInterval'
   );
   powInterval = this.unimplementedScalarPairToInterval.bind(this, 'powInterval');
-  radiansInterval = this.radiansIntervalImpl.bind(this);
+  radiansInterval = this.unimplementedScalarToInterval.bind(this, 'radiansImpl');
   reflectInterval = this.unimplementedVectorPairToVector.bind(
     this,
     'reflectInterval'
   );
   refractInterval = this.unimplementedRefract.bind(this);
-  remainderInterval = (x, y) => {
-    return this.toInterval(kF32Traits.remainderInterval(x, y));
-  };
+  remainderInterval = this.unimplementedScalarPairToInterval.bind(
+    this,
+    'remainderInterval'
+  );
   roundInterval = this.roundIntervalImpl.bind(this);
   saturateInterval = this.saturateIntervalImpl.bind(this);
   signInterval = this.signIntervalImpl.bind(this);
@@ -5194,7 +5212,7 @@ class FPAbstractTraits extends FPTraits {
     'smoothStepInterval'
   );
   sqrtInterval = this.unimplementedScalarToInterval.bind(this, 'sqrtInterval');
-  stepInterval = this.unimplementedScalarPairToInterval.bind(this, 'stepInterval');
+  stepInterval = this.stepIntervalImpl.bind(this);
   subtractionInterval = this.subtractionIntervalImpl.bind(this);
   subtractionMatrixMatrixInterval =
   this.subtractionMatrixMatrixIntervalImpl.bind(this);
@@ -5255,6 +5273,7 @@ class F16Traits extends FPTraits {
         sixth: kValue.f16.negative.pi.sixth
       }
     },
+    bias: 15,
     unboundedInterval: kF16UnboundedInterval,
     zeroInterval: kF16ZeroInterval,
     // Have to use the constants.ts values here, because values defined in the
