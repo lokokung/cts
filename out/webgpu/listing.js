@@ -4102,6 +4102,16 @@ export const listing = [
       "expression",
       "call",
       "builtin",
+      "cross"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
       "degrees"
     ]
   },
@@ -4302,6 +4312,16 @@ export const listing = [
       "expression",
       "call",
       "builtin",
+      "quantizeToF16"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
       "radians"
     ]
   },
@@ -4363,6 +4383,16 @@ export const listing = [
       "call",
       "builtin",
       "sqrt"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "step"
     ]
   },
   {
@@ -4463,6 +4493,16 @@ export const listing = [
       "call",
       "builtin",
       "textureStore"
+    ]
+  },
+  {
+    "file": [
+      "shader",
+      "validation",
+      "expression",
+      "call",
+      "builtin",
+      "trunc"
     ]
   },
   {
