@@ -47,6 +47,7 @@ g.test('scalar_vector')
           value => !(value.startsWith('vec3') || value.startsWith('vec4'))
         )
       )
+      .combine('compound_assignment', [false, true] as const)
       .beginSubcases()
       .combine('op', ['<<', '>>'])
   )
@@ -64,7 +65,15 @@ g.test('scalar_vector')
     const lhsElement = scalarTypeOf(lhs);
     const rhsElement = scalarTypeOf(rhs);
     const hasF16 = lhsElement === Type.f16 || rhsElement === Type.f16;
-    const code = `
+    const code = t.params.compound_assignment
+      ? `
+${hasF16 ? 'enable f16;' : ''}
+fn f() {
+  var foo = ${lhs.create(0).wgsl()};
+  foo ${t.params.op}= ${rhs.create(0).wgsl()};
+}
+`
+      : `
 ${hasF16 ? 'enable f16;' : ''}
 const lhs = ${lhs.create(0).wgsl()};
 const rhs = ${rhs.create(0).wgsl()};
@@ -257,4 +266,42 @@ fn main() {
 }
     `;
     t.expectCompileResult(t.params.case.pass, code);
+  });
+
+g.test('partial_eval_errors')
+  .desc('Tests partial evaluation errors for left shift')
+  .params(u =>
+    u
+      .combine('op', ['<<', '>>'] as const)
+      .combine('type', ['i32', 'u32'] as const)
+      .beginSubcases()
+      .combine('stage', ['shader', 'pipeline'] as const)
+      .combine('value', [32, 33, 64] as const)
+  )
+  .fn(t => {
+    const u32 = Type.u32;
+    let rhs = 'o';
+    if (t.params.stage === 'shader') {
+      rhs = `${u32.create(t.params.value).wgsl()}`;
+    }
+    const wgsl = `
+override o = 0u;
+fn foo() {
+  var v : ${t.params.type} = 0;
+  let tmp = v ${t.params.op} ${rhs};
+}`;
+
+    const expect = t.params.value <= 32;
+    if (t.params.stage === 'shader') {
+      t.expectCompileResult(expect, wgsl);
+    } else {
+      const constants: Record<string, number> = {};
+      constants['o'] = t.params.value;
+      t.expectPipelineResult({
+        expectedResult: expect,
+        code: wgsl,
+        constants,
+        reference: ['o'],
+      });
+    }
   });
